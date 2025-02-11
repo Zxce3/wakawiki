@@ -1,0 +1,357 @@
+<!-- svelte-ignore export_let_unused -->
+<!-- 
+    This Svelte component displays a list of liked articles.
+    It supports different view modes (grid, list, story) and allows navigation between articles.
+-->
+
+<script lang="ts">
+    import { onMount } from 'svelte';
+    import { likedArticles } from '../store/articles';
+    import { getLikedArticlesData } from '../storage/utils';
+    import ArticleCard from './ArticleCard.svelte';
+    import type { WikiArticle } from '../types';
+    
+    interface TimestampedArticle extends WikiArticle {
+        timestamp?: number;
+        excerpt?: string;
+    }
+    
+    export let isOpen = false; // Controls the visibility of the component
+    export let onClose: () => void; // Function to call when the component is closed
+    
+    // svelte-ignore export_let_unused
+    export let articles: WikiArticle[] = []; // List of articles to display
+    // svelte-ignore export_let_unused
+    export let onArticleSelect: (article: WikiArticle) => void; // Function to call when an article is selected
+
+    let storedArticles: TimestampedArticle[] = []; // Articles with timestamps and excerpts
+
+    let viewMode: 'grid' | 'list' | 'story' = 'list'; // Current view mode
+
+    let currentStoryIndex = 0; // Index of the current story in story mode
+
+    // Reactive statement to calculate the progress of the current story
+    $: progress = ((currentStoryIndex + 1) / (likedList?.length || 1)) * 100;
+
+    // Function to switch the view mode
+    function switchView(newMode: typeof viewMode, index?: number) {
+        viewMode = newMode;
+        if (newMode === 'story' && typeof index === 'number') {
+            currentStoryIndex = index;
+        }
+    }
+
+    // Function to handle navigation between stories
+    function handleNavigation(direction: 'prev' | 'next') {
+        if (!likedList.length) return;
+        if (direction === 'next') {
+            currentStoryIndex =
+                currentStoryIndex < likedList.length - 1 ? currentStoryIndex + 1 : 0;
+        } else {
+            currentStoryIndex =
+                currentStoryIndex > 0 ? currentStoryIndex - 1 : likedList.length - 1;
+        }
+    }
+
+    let touchStart = { x: 0, y: 0 }; // Initial touch position
+
+    // Function to handle touch start event
+    function handleTouchStart(e: TouchEvent) {
+        touchStart = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY
+        };
+    }
+
+    // Function to handle touch end event
+    function handleTouchEnd(e: TouchEvent) {
+        const deltaX = touchStart.x - e.changedTouches[0].clientX;
+        const deltaY = touchStart.y - e.changedTouches[0].clientY;
+        
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+            handleNavigation(deltaX > 0 ? 'next' : 'prev');
+        }
+    }
+
+    // Function to handle keydown events for navigation and closing
+    function handleKeydown(event: KeyboardEvent) {
+        if (!isOpen) return;
+        switch (event.key) {
+            case 'ArrowLeft':
+                if (viewMode === 'story') handleNavigation('prev');
+                break;
+            case 'ArrowRight':
+                if (viewMode === 'story') handleNavigation('next');
+                break;
+            case 'Escape':
+                if (viewMode === 'story') {
+                    switchView('grid');
+                } else {
+                    onClose();
+                }
+                break;
+        }
+    }
+
+    // onMount lifecycle function to fetch liked articles and add event listeners
+    onMount(() => {
+        window.addEventListener('keydown', handleKeydown);
+
+        (async () => {
+            storedArticles = await getLikedArticlesData();
+            storedArticles = storedArticles.map((article) => ({
+                ...article,
+                timestamp: (article as TimestampedArticle).timestamp || Date.now(),
+                excerpt: article.excerpt || ''
+            }));
+        })();
+
+        return () => {
+            window.removeEventListener('keydown', handleKeydown);
+        };
+    });
+
+    // Reactive statement to fetch liked articles when the component is opened
+    $: if (isOpen) {
+        getLikedArticlesData().then((articles) => {
+            storedArticles = articles.map((article) => ({
+                ...article,
+                timestamp: (article as TimestampedArticle).timestamp || Date.now(),
+                excerpt: article.excerpt || ''
+            }));
+        });
+    }
+
+    // Reactive statement to filter and sort liked articles
+    $: likedList = storedArticles
+        .filter((article) => $likedArticles.has(article.id))
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+</script>
+
+<div
+    class="fixed inset-0 z-[200] bg-black/95 transition-all duration-300"
+    class:opacity-0={!isOpen}
+    class:pointer-events-none={!isOpen}
+    on:touchstart={handleTouchStart}
+    on:touchend={handleTouchEnd}
+>
+    <!-- Header with progress bar and controls -->
+    <header class="fixed top-0 left-0 right-0 z-[201]">
+        <!-- Progress bar only if story mode -->
+        {#if viewMode === 'story' && likedList.length > 0}
+            <div class="h-1 bg-black/40 flex gap-1 px-1">
+                {#each likedList as _, i (i)}
+                    <div class="flex-1 rounded-full overflow-hidden bg-white/20">
+                        <div
+                            class="h-full bg-white transition-all duration-300 ease-linear"
+                            style="width: {i < currentStoryIndex ? '100%' : i === currentStoryIndex ? progress : '0'}%"
+                        ></div>
+                    </div>
+                {/each}
+            </div>
+        {/if}
+
+        <!-- Navigation bar -->
+        <nav class="flex justify-between items-center p-4">
+            <!-- View toggles (grid, list, story) -->
+            <div class="flex gap-2">
+                {#each ['grid', 'list', 'story'] as mode}
+                    <button
+                        class="p-2 rounded-full transition-colors"
+                        class:bg-white-20={viewMode === mode}
+                        class:bg-white-5={viewMode !== mode}
+                        class:hover:bg-white-30={viewMode !== mode}
+                        on:click={() => switchView(mode as typeof viewMode)}
+                        aria-label={`Switch to ${mode} view`}
+                    >
+                        <svg class="w-5 h-5 text-white">
+                            <use href="#icon-{mode}" />
+                        </svg>
+                    </button>
+                {/each}
+            </div>
+
+            <!-- Right side: story indicator & close -->
+            <div class="flex items-center gap-4">
+                {#if viewMode === 'story' && likedList.length > 0}
+                    <span class="text-white/80 text-sm">
+                        {currentStoryIndex + 1} / {likedList.length}
+                    </span>
+                {/if}
+                <button
+                    class="p-2 rounded-full bg-white/10 hover:bg-white/20"
+                    on:click={onClose}
+                    aria-label="Close"
+                >
+                    <svg class="w-6 h-6 text-white" viewBox="0 0 24 24">
+                        <path
+                            stroke="currentColor"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                        />
+                    </svg>
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main content area -->
+    <main class="h-screen pt-20 px-4 overflow-hidden">
+        {#if likedList.length === 0}
+            <div class="h-full flex items-center justify-center">
+                <p class="text-white/80 text-xl">No liked articles yet</p>
+            </div>
+        {:else if viewMode === 'grid'}
+            <div class="h-full overflow-y-auto pb-8">
+                <!-- Grid layout -->
+                <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {#each likedList as article, i (article.id)}
+                        <button
+                            class="group relative w-full overflow-hidden rounded-lg aspect-square"
+                            on:click={() => switchView('story', i)}
+                            aria-label={`View story for ${article.title}`}
+                        >
+                            <img
+                                src={article.imageUrl}
+                                alt={article.title}
+                                class="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+                            />
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent">
+                                <div class="absolute bottom-0 p-2 sm:p-3 md:p-4 w-full">
+                                    <h3 class="text-white font-medium text-sm line-clamp-2">
+                                        {article.title}
+                                    </h3>
+                                </div>
+                            </div>
+                        </button>
+                    {/each}
+                </div>
+            </div>
+        {:else if viewMode === 'list'}
+            <div class="h-full overflow-y-auto pb-8">
+                <div class="max-w-2xl mx-auto space-y-2">
+                    {#each likedList as article, i (article.id)}
+                        <button
+                            class="flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 transition-colors w-full"
+                            on:click={() => switchView('story', i)}
+                            aria-label={`View story for ${article.title}`}
+                        >
+                            <img
+                                src={article.imageUrl}
+                                alt={article.title}
+                                class="w-16 h-16 object-cover rounded flex-shrink-0"
+                            />
+                            <div class="flex-1 text-left">
+                                <h3 class="text-white font-medium line-clamp-1">
+                                    {article.title}
+                                </h3>
+                                <p class="text-white/60 text-sm mt-1 line-clamp-2">
+                                    {article.excerpt}
+                                </p>
+                            </div>
+                        </button>
+                    {/each}
+                </div>
+            </div>
+        {:else}
+            <!-- Story view -->
+            <div class="h-full flex items-center justify-center">
+                {#if likedList && likedList[currentStoryIndex]}
+                    <ArticleCard
+                        article={likedList[currentStoryIndex]}
+                        active={true}
+                        showNavigationButtons={false}
+                        onNavigate={() => {}}
+                        index={currentStoryIndex}
+                        currentVisibleIndex={currentStoryIndex}
+                    />
+                {/if}
+            </div>
+            {#if viewMode === 'story' && likedList.length > 0}
+                <!-- Large Screen Navigation Buttons -->
+                <div class="fixed left-4 right-4 top-1/2 -translate-y-1/2 z-[202] hidden md:flex justify-between pointer-events-none">
+                    <button
+                        class="p-4 rounded-full bg-white/10 hover:bg-white/20 transition-colors pointer-events-auto backdrop-blur-sm
+                            transform hover:scale-105 active:scale-95"
+                        on:click={() => handleNavigation('prev')}
+                        aria-label="Previous story"
+                    >
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <button
+                        class="p-4 rounded-full bg-white/10 hover:bg-white/20 transition-colors pointer-events-auto backdrop-blur-sm
+                            transform hover:scale-105 active:scale-95"
+                        on:click={() => handleNavigation('next')}
+                        aria-label="Next story"
+                    >
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+            {/if}
+        {/if}
+    </main>
+
+    <!-- Hidden SVG for icons -->
+    <div class="hidden">
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <symbol id="icon-grid" viewBox="0 0 24 24">
+                    <path
+                        fill="currentColor"
+                        d="M3 3h7v7H3V3m11 0h7v7h-7V3m0 11h7v7h-7v-7M3 14h7v7H3v-7z"
+                    />
+                </symbol>
+                <symbol id="icon-list" viewBox="0 0 24 24">
+                    <path
+                        fill="currentColor"
+                        d="M3 4h18v2H3V4m0 7h18v2H3v-2m0 7h18v2H3v-2z"
+                    />
+                </symbol>
+                <symbol id="icon-story" viewBox="0 0 24 24">
+                    <path
+                        fill="currentColor"
+                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48
+                           10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"
+                    />
+                </symbol>
+            </defs>
+        </svg>
+    </div>
+</div>
+
+<style>
+    .line-clamp-1,
+    .line-clamp-2 {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .line-clamp-1 {
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+    }
+    .line-clamp-2 {
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+
+    .bg-white-20 {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+    .bg-white-5 {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    .hover\:bg-white-30:hover {
+        background-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .transition-all {
+        transition-property: all;
+        transition-timing-function: linear;
+        transition-duration: 300ms;
+    }
+</style>
