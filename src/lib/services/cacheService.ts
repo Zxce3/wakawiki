@@ -24,6 +24,8 @@ class CacheService {
     private readonly CATEGORY_TTL = 60 * 60 * 1000; // 1 hour
     private readonly SUMMARY_TTL = 15 * 60 * 1000; // 15 minutes
     private readonly IMAGE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+    private currentLanguage: SupportedLanguage = 'en';
     
     static getInstance(): CacheService {
         if (!CacheService.instance) {
@@ -33,9 +35,37 @@ class CacheService {
     }
 
     /**
+     * Clears all caches when language changes
+     */
+    clearCacheForLanguage(newLanguage: SupportedLanguage) {
+        if (this.currentLanguage !== newLanguage) {
+            this.articleCache.clear();
+            this.categoryCache.clear();
+            this.summaryCache.clear();
+            this.imageCache.clear();
+            this.currentLanguage = newLanguage;
+        }
+    }
+
+    /**
+     * Clears all caches completely
+     */
+    clearAllCaches() {
+        this.articleCache.clear();
+        this.categoryCache.clear();
+        this.summaryCache.clear();
+        this.imageCache.clear();
+        this.currentLanguage = 'en'; // Reset to default
+    }
+
+    /**
      * Sets a cache entry with a timestamp and language.
      */
     set<T>(cache: Map<string, CacheEntry<T>>, key: string, data: T, language: SupportedLanguage) {
+        // Always verify language matches current before caching
+        if (language !== this.currentLanguage) {
+            return; // Don't cache if language doesn't match
+        }
         cache.set(key, {
             data,
             timestamp: Date.now(),
