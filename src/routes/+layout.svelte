@@ -14,24 +14,28 @@
         if (browser && !appInitialized) {
             setLoading('initial', true, 'Initializing app');
             try {
-                
+                const currentLang = await language.initialize();
                 if (!window.recommendationsWorker) {
                     window.recommendationsWorker = new Worker(
                         new URL('../lib/workers/recommendations.ts', import.meta.url),
                         { type: 'module' }
                     );
+                    window.recommendationsWorker.postMessage({
+                        type: 'initialize',
+                        categories: [],
+                        language: currentLang
+                    });
                 }
                 
-                if (!window.articleFetcherWorker) {
-                    window.articleFetcherWorker = new Worker(
-                        new URL('../lib/workers/articleFetcher.ts', import.meta.url),
+                if (!window.articleLoaderWorker) {
+                    window.articleLoaderWorker = new Worker(
+                        new URL('../lib/workers/articleLoader.ts', import.meta.url),
                         { type: 'module' }
                     );
-                }
-
-                const storedLang = await getStoredLanguage();
-                if (storedLang) {
-                    setInitialLanguage(storedLang);
+                    window.articleLoaderWorker.postMessage({
+                        type: 'changeLanguage',
+                        language: currentLang
+                    });
                 }
 
                 await cleanupOldData();
