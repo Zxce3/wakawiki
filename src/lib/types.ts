@@ -186,6 +186,7 @@ export interface LocalUserInteraction {
 
 
 export interface WikiSummary {
+    [x: string]: any;
     type: string;
     title: string;
     displaytitle: string;
