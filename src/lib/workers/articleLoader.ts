@@ -119,6 +119,8 @@ self.onmessage = async (event: MessageEvent<LoaderMessage>) => {
 
             case 'changeLanguage':
                 articleBuffer.length = 0; // Clear buffer
+                memoryBuffer.clear();
+                articleCache.clear();
                 await wiki.setLang(language);
                 await prefetchArticles(language);
                 break;
