@@ -10,12 +10,33 @@ import type { WikiArticle, SupportedLanguage } from '../types';
 import { fetchRandomArticle } from '../api/wikipedia';
 import { cacheService } from '../services/cacheService';
 
+// Constants - moved to top
 const BATCH_SIZE = 5;
 const BUFFER_SIZE = 15;
 const MAX_RETRIES = 3;
+const MAX_CACHE_SIZE = 50;
+const PREFETCH_THRESHOLD = 10;
+const MEMORY_BUFFER_SIZE = 50;
+const BATCH_RETRY_LIMIT = 5;
+const RATE_LIMIT_DELAY = 300;
+const ERROR_RETRY_DELAY = 1000;
+const MAX_PARALLEL_REQUESTS = 2;
+const DELAY_BETWEEN_REQUESTS = 250;
 
 const articleCache = new Map<string, WikiArticle>();
-const MAX_CACHE_SIZE = 50;
+const articleBuffer: WikiArticle[] = [];
+const memoryBuffer = new Map<string, WikiArticle>();
+const fetchQueue: Array<() => Promise<void>> = [];
+let isProcessing = false;
+
+// Initialize wiki language before any operations
+(async () => {
+    try {
+        await wiki.setLang('en');
+    } catch (error) {
+        console.error(error);
+    }
+})();
 
 /**
  * Loads a batch of random articles.
@@ -49,12 +70,6 @@ async function loadArticleBatch(language: SupportedLanguage, count: number): Pro
     return articles;
 }
 
-const PREFETCH_THRESHOLD = 10;
-const articleBuffer: WikiArticle[] = [];
-
-const MEMORY_BUFFER_SIZE = 50;
-const memoryBuffer = new Map<string, WikiArticle>();
-
 /**
  * Adds an article to the memory buffer.
  */
@@ -72,11 +87,17 @@ interface LoaderMessage {
     type: 'load' | 'prefetch' | 'changeLanguage';
     language: SupportedLanguage;
     count?: number;
+    immediate?: boolean;
 }
 
 self.onmessage = async (event: MessageEvent<LoaderMessage>) => {
     try {
-        const { type, language, count = BATCH_SIZE } = event.data;
+        const { type, language, count = BATCH_SIZE, immediate = false } = event.data;
+
+        // Set language before any operation
+        if (language) {
+            await wiki.setLang(language);
+        }
 
         switch (type) {
             case 'load':
@@ -84,8 +105,15 @@ self.onmessage = async (event: MessageEvent<LoaderMessage>) => {
                 if (articles.length > 0) {
                     self.postMessage({ 
                         type: 'articles', 
-                        articles: articles
+                        articles: articles,
+                        language,
+                        immediate
                     });
+                    
+                    // Start prefetching immediately after initial load
+                    if (immediate) {
+                        prefetchArticles(language);
+                    }
                 }
                 break;
 
@@ -108,8 +136,8 @@ self.onmessage = async (event: MessageEvent<LoaderMessage>) => {
     }
 };
 
-const fetchQueue: Array<() => Promise<void>> = [];
-let isProcessing = false;
+// Don't auto-initialize, wait for language
+// Remove the immediate execution
 
 /**
  * Processes the fetch queue to manage parallel requests.
@@ -132,50 +160,30 @@ async function processQueue() {
     isProcessing = false;
 }
 
-const RATE_LIMIT_DELAY = 300; // Delay to respect rate limits
-const ERROR_RETRY_DELAY = 1000; // Delay before retrying on error
-const MAX_PARALLEL_REQUESTS = 2;
-
-const BATCH_RETRY_LIMIT = 5;
-const DELAY_BETWEEN_REQUESTS = 250;
-
 /**
  * Fetches a specified number of articles.
  */
 async function getArticles(language: SupportedLanguage, count: number): Promise<WikiArticle[]> {
     const articles: WikiArticle[] = [];
     let retryCount = 0;
+    const maxRetries = 3;
 
-    const fetchSingleArticle = async (): Promise<WikiArticle | null> => {
+    while (articles.length < count && retryCount < maxRetries) {
         try {
-            const article = await fetchRandomArticle(language);
-            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
-            return article;
+            const batchSize = Math.min(3, count - articles.length);
+            const batch = await Promise.all(
+                Array(batchSize).fill(null).map(() => fetchRandomArticle(language))
+            );
+            
+            const validArticles = batch
+                .filter((article): article is WikiArticle => 
+                    article !== null && isValidArticle(article));
+            
+            articles.push(...validArticles);
         } catch (error) {
-            console.warn('Error fetching single article:', error);
-            return null;
-        }
-    };
-
-    while (articles.length < count && retryCount < BATCH_RETRY_LIMIT) {
-        const batchPromises = Array(BATCH_SIZE)
-            .fill(null)
-            .map(() => fetchSingleArticle());
-
-        const batchResults = await Promise.allSettled(batchPromises);
-        
-        const validArticles = batchResults
-            .filter((result): result is PromiseFulfilledResult<WikiArticle | null> => 
-                result.status === 'fulfilled' && result.value !== null)
-            .map(result => result.value)
-            .filter((article): article is WikiArticle => 
-                article !== null && isValidArticle(article));
-
-        articles.push(...validArticles);
-
-        if (validArticles.length === 0) {
+            console.warn('Error fetching batch:', error);
             retryCount++;
-            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS * (retryCount + 1)));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
 

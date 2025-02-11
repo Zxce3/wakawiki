@@ -58,6 +58,7 @@
 
     $: if ((data as any).initialLanguage && browser) {
         language.set((data as any).initialLanguage as SupportedLanguage);
+        articles.set((data as any).initialArticles);
     } else if (browser) {
         getStoredLanguage().then(storedLang => {
             if (storedLang) {
@@ -207,55 +208,45 @@
         isPortrait = window.innerHeight > window.innerWidth;
     }
 
-    onMount(() => {
+    let contentReady = false;
+    let initialLoadComplete = false;
+
+    // Improved initialization logic
+    onMount(async () => {
         if (browser) {
+            setLoading('initial', true, 'Loading your articles');
+            
             const initializeData = async () => {
-                if ((data as any).initialArticles?.length > 0) {
-                    articles.set((data as any).initialArticles);
-                } else if ($articles.length === 0) {
-                    const initialData = await loadInitialData();
-                    language.set(initialData.initialLanguage);
-                    articles.set(initialData.initialArticles);
+                try {
+                    if ((data as any).initialArticles?.length > 0) {
+                        articles.set((data as any).initialArticles);
+                    } else if ($articles.length === 0) {
+                        const initialData = await loadInitialData();
+                        language.set(initialData.initialLanguage);
+                        articles.set(initialData.initialArticles);
+                    }
+                    contentReady = true;
+                } catch (err) {
+                    console.error('Failed to initialize:', err);
+                } finally {
+                    setLoading('initial', false);
+                    initialLoadComplete = true;
                 }
             };
             
-            initializeData();
-            checkOrientation();
-            window.addEventListener('resize', checkOrientation);
+            await initializeData();
             
+            // Start background loading only after initial content is ready
             if ($articles.length === 0) {
                 loadArticles();
             }
-            
-            if (!window.recommendationsWorker) {
-                window.recommendationsWorker = new Worker(
-                    new URL('$lib/workers/recommendations.ts', import.meta.url),
-                    { type: 'module' }
-                );
-            }
-            window.recommendationsWorker.onmessage = handleRecommendationMessage;
-
-            window.addEventListener('keydown', handleKeydown);
         }
-
-        function updateViewportHeight() {
-            viewportHeight = window.innerHeight;
-            document.documentElement.style.setProperty('--vh', `${viewportHeight * 0.01}px`);
-        }
-        
-        updateViewportHeight();
-        window.addEventListener('resize', updateViewportHeight);
-        window.addEventListener('orientationchange', updateViewportHeight);
-        
-        return () => {
-            window.removeEventListener('resize', updateViewportHeight);
-            window.removeEventListener('orientationchange', updateViewportHeight);
-            if (browser) {
-                window.removeEventListener('resize', checkOrientation);
-                window.removeEventListener('keydown', handleKeydown);
-            }
-        };
     });
+
+    // Add reactive statement for content readiness
+    $: isContentLoading = $articleLoading.isLoading || 
+                         $languageLoading.isLoading || 
+                         (!initialLoadComplete && !contentReady);
 
     
     async function handleArticleChange(article: WikiArticle) {
@@ -400,144 +391,165 @@ onMount(() => {
 });
 </script>
 
-<!-- Replace the container structure -->
+<!-- Main container with loading states -->
 <div class="fixed inset-0 bg-black">
-    <div 
-        class="mx-auto h-full relative overflow-hidden bg-black"
-        class:max-w-[500px]={isPortrait}
-    >
-        <!-- Navigation Controls -->
-        <nav 
-            class="fixed top-0 inset-x-0 z-50 flex justify-between items-center p-4 max-w-[500px] mx-auto"
-            aria-label="Main navigation"
-        >
-            <button
-                class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
-                on:click={() => showLanguageSelector = true}
-                aria-label="Select Language"
-            >
-                <span class="text-2xl">{languages[$language as SupportedLanguage]}</span>
-            </button>
-            
-            <button
-                class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
-                on:click={() => showLikedArticles = true}
-                aria-label="Show Liked Articles"
-            >
-                <div class="flex items-center gap-2">
-                    <svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                    </svg>
-                    <span class="text-white font-medium">{$likedArticles.size}</span>
-                </div>
-            </button>
-        </nav>
-
-        <!-- Desktop Navigation Buttons -->
-        <div class="fixed right-8 top-1/2 -translate-y-1/2 z-[102] hidden md:flex flex-col gap-4">
-            <button
-                class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
-                on:click={() => scrollToArticle('up')}
-                aria-label="Scroll Up"
-            >
-                <svg class="w-6 h-6 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-                </svg>
-            </button>
-            <button
-                class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
-                on:click={() => scrollToArticle('down')}
-                aria-label="Scroll Down"
-            >
-                <!-- Fixed viewBox attribute here -->
-                <svg class="w-6 h-6 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-            </button>
+    {#if isContentLoading}
+        <div class="absolute inset-0 flex items-center justify-center z-50">
+            <LoadingSpinner 
+                size="lg"
+                message={$articleLoading.message || $languageLoading.message || "Loading your articles"}
+                show={true}
+                fullscreen={true}
+            />
         </div>
-
-        <!-- Articles Container -->
-        <main 
-            class="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-none"
-            bind:this={articlesContainer}
-            on:scroll={handleScroll}
-            role="feed"
-            aria-busy={isLoading}
-            aria-label="Articles feed"
+    {:else if $articles.length === 0}
+        <div class="absolute inset-0 flex items-center justify-center">
+            <LoadingSpinner 
+                size="md"
+                message="Finding interesting articles"
+                show={true}
+            />
+        </div>
+    {:else}
+        <div 
+            class="mx-auto h-full relative overflow-hidden bg-black transition-opacity duration-300"
+            class:max-w-[500px]={isPortrait}
+            class:opacity-0={!contentReady}
+            class:opacity-100={contentReady}
         >
-            <!-- Initial Loading State -->
-            {#if articlesLoading && $articles.length === 0}
-                <div class="absolute inset-0 flex items-center justify-center" aria-live="assertive">
+            <!-- Navigation Controls -->
+            <nav 
+                class="fixed top-0 inset-x-0 z-50 flex justify-between items-center p-4 max-w-[500px] mx-auto"
+                aria-label="Main navigation"
+            >
+                <button
+                    class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
+                    on:click={() => showLanguageSelector = true}
+                    aria-label="Select Language"
+                >
+                    <span class="text-2xl">{languages[$language as SupportedLanguage]}</span>
+                </button>
+                
+                <button
+                    class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
+                    on:click={() => showLikedArticles = true}
+                    aria-label="Show Liked Articles"
+                >
+                    <div class="flex items-center gap-2">
+                        <svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                        <span class="text-white font-medium">{$likedArticles.size}</span>
+                    </div>
+                </button>
+            </nav>
+
+            <!-- Desktop Navigation Buttons -->
+            <div class="fixed right-8 top-1/2 -translate-y-1/2 z-[102] hidden md:flex flex-col gap-4">
+                <button
+                    class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
+                    on:click={() => scrollToArticle('up')}
+                    aria-label="Scroll Up"
+                >
+                    <svg class="w-6 h-6 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                    </svg>
+                </button>
+                <button
+                    class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
+                    on:click={() => scrollToArticle('down')}
+                    aria-label="Scroll Down"
+                >
+                    <!-- Fixed viewBox attribute here -->
+                    <svg class="w-6 h-6 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Articles Container -->
+            <main 
+                class="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-none"
+                bind:this={articlesContainer}
+                on:scroll={handleScroll}
+                role="feed"
+                aria-busy={isLoading}
+                aria-label="Articles feed"
+            >
+                <!-- Initial Loading State -->
+                {#if articlesLoading && $articles.length === 0}
+                    <div class="absolute inset-0 flex items-center justify-center" aria-live="assertive">
+                        <LoadingSpinner 
+                            size="md" 
+                            message="Loading articles" 
+                            show={true}
+                        />
+                    </div>
+                {/if}
+
+                {#each $articles as article, index (article.id + '-' + index)}
+                    <article 
+                        class="article-container snap-start"
+                    >
+                        <ArticleCard 
+                            {article} 
+                            {index}
+                            currentVisibleIndex={lastVisibleIndex}
+                            active={isArticleVisible(index)}
+                            score={article.score}
+                            isRecommended={article.isRecommendation}
+                            showNavigationButtons={false}
+                            onNavigate={handleNavigate}
+                            on:mounted={() => handleArticleView(article)}
+                        />
+                    </article>
+                    
+                    <!-- Insert project ad -->
+                    {#if shouldShowAd(index)}
+                        <aside 
+                            class="article-container snap-start"
+                            aria-label="Advertisement"
+                        >
+                            <ProjectAd project={getRandomProjectAd()} />
+                        </aside>
+                    {/if}
+                {/each}
+                
+                <!-- Loading More Indicator -->
+                {#if $loadingMore && !articlesLoading}
+                    <div 
+                        class="w-full flex justify-center py-4"
+                        aria-live="polite"
+                    >
+                        <LoadingSpinner 
+                            size="sm" 
+                            message="Loading more articles" 
+                            show={true}
+                        />
+                    </div>
+                {/if}
+
+                <!-- Buffer status indicator -->
+                <div 
+                    class="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm text-white/90 text-sm"
+                    transition:fade
+                >
+                    Loading more articles...
+                </div>
+            </main>
+
+            <!-- Loading overlays -->
+            {#if $articleLoading.isLoading || $languageLoading.isLoading}
+                <div class="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center">
                     <LoadingSpinner 
                         size="md" 
-                        message="Loading articles" 
+                        message={$languageLoading.isLoading ? $languageLoading.message : "Loading article"}
                         show={true}
                     />
                 </div>
             {/if}
-
-            {#each $articles as article, index (article.id + '-' + index)}
-                <article 
-                    class="article-container snap-start"
-                >
-                    <ArticleCard 
-                        {article} 
-                        {index}
-                        currentVisibleIndex={lastVisibleIndex}
-                        active={isArticleVisible(index)}
-                        score={article.score}
-                        isRecommended={article.isRecommendation}
-                        showNavigationButtons={false}
-                        onNavigate={handleNavigate}
-                        on:mounted={() => handleArticleView(article)}
-                    />
-                </article>
-                
-                <!-- Insert project ad -->
-                {#if shouldShowAd(index)}
-                    <aside 
-                        class="article-container snap-start"
-                        aria-label="Advertisement"
-                    >
-                        <ProjectAd project={getRandomProjectAd()} />
-                    </aside>
-                {/if}
-            {/each}
-            
-            <!-- Loading More Indicator -->
-            {#if $loadingMore && !articlesLoading}
-                <div 
-                    class="w-full flex justify-center py-4"
-                    aria-live="polite"
-                >
-                    <LoadingSpinner 
-                        size="sm" 
-                        message="Loading more articles" 
-                        show={true}
-                    />
-                </div>
-            {/if}
-
-            <!-- Buffer status indicator -->
-            <div 
-                class="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm text-white/90 text-sm"
-                transition:fade
-            >
-                Loading more articles...
-            </div>
-        </main>
-
-        <!-- Loading overlays -->
-        {#if $articleLoading.isLoading || $languageLoading.isLoading}
-            <div class="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                <LoadingSpinner 
-                    size="md" 
-                    message={$languageLoading.isLoading ? $languageLoading.message : "Loading article"}
-                    show={true}
-                />
-            </div>
-        {/if}
-    </div>
+        </div>
+    {/if}
 </div>
 
 <!-- Modals -->

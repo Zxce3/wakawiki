@@ -30,7 +30,7 @@ function createLoadingStore(initialState: boolean = false) {
     };
 }
 
-export const initialLoading = createLoadingStore(true);
+export const initialLoading = createLoadingStore(false);
 export const articleLoading = createLoadingStore(false);
 export const languageLoading = createLoadingStore(false);
 

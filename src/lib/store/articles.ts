@@ -28,6 +28,33 @@ declare global {
     }
 }
 
+// Initialize stores first
+export const articles = writable<WikiArticle[]>([]);
+export const loading = writable(false);
+export const likedArticles = writable<Set<string>>(new Set());
+export const loadingMore = writable(false);
+export const isLoadingBuffer = writable(false);
+export const articleBuffer = writable<WikiArticle[]>([]);
+export const preloadingArticles = writable<Promise<WikiArticle>[]>([]);
+export const loadingStatus = writable({
+    isLoading: false,
+    preloading: false,
+    error: null as string | null
+});
+export const recommendations = writable(new Map<string, number>());
+export const likedCategories = writable<Set<string>>(new Set());
+export const initializing = writable(true);
+
+// Loading state configuration
+const loadingState = {
+    isLoading: false,
+    lastLoadTime: 0,
+    retryCount: 0,
+    maxRetries: 3,
+    batchSize: 5
+};
+
+// Worker initialization
 let articleLoaderWorker: Worker | undefined;
 
 if (browser) {
@@ -43,9 +70,16 @@ if (browser) {
             switch (type) {
                 case 'articles':
                     if (Array.isArray(newArticles) && newArticles.length > 0) {
-                        articles.update(existing => [...existing, ...newArticles]);
+                        articles.update(existing => {
+                            const combined = existing.length === 0 ? 
+                                newArticles : 
+                                [...existing, ...newArticles];
+                            return combined;
+                        });
                         loadingMore.set(false);
+                        initializing.set(false);
                         
+                        // Prefetch next batch
                         articleLoaderWorker?.postMessage({
                             type: 'prefetch',
                             language: get(language)
@@ -65,31 +99,9 @@ if (browser) {
         };
     } catch (error) {
         console.error('Failed to initialize article loader worker:', error);
+        initializing.set(false);
     }
 }
-
-const loadingState = {
-    isLoading: false,
-    lastLoadTime: 0,
-    retryCount: 0,
-    maxRetries: 3,
-    batchSize: 5
-};
-
-export const articles = writable<WikiArticle[]>([]);
-export const loading = writable(false);
-export const likedArticles = writable<Set<string>>(new Set());
-export const loadingMore = writable(false);
-export const isLoadingBuffer = writable(false);
-export const articleBuffer = writable<WikiArticle[]>([]);
-export const preloadingArticles = writable<Promise<WikiArticle>[]>([]);
-export const loadingStatus = writable({
-    isLoading: false,
-    preloading: false,
-    error: null as string | null
-});
-export const recommendations = writable(new Map<string, number>());
-export const likedCategories = writable<Set<string>>(new Set());
 
 /**
  * Derived store to combine all articles and buffer.
@@ -504,7 +516,8 @@ export async function loadMoreArticles(count = loadingState.batchSize) {
             articleLoaderWorker.postMessage({
                 type: 'load',
                 language: get(language),
-                count
+                count,
+                immediate: get(articles).length === 0 // Signal immediate loading needed
             });
             
             articleLoaderWorker.postMessage({
