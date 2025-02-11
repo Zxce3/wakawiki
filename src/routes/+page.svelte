@@ -422,6 +422,28 @@
             }
         }
     });
+
+    let lastTapTime = 0;
+    const DOUBLE_TAP_DELAY = 300; // milliseconds
+
+    function handleTap(article: WikiArticle) {
+        const currentTime = Date.now();
+        const tapLength = currentTime - lastTapTime;
+        
+        if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
+            // Double tap detected
+            likedArticles.update(set => {
+                const newSet = new Set(set);
+                if (newSet.has(article.id)) {
+                    newSet.delete(article.id);
+                } else {
+                    newSet.add(article.id);
+                }
+                return newSet;
+            });
+        }
+        lastTapTime = currentTime;
+    }
 </script>
 
 <!-- Main container with loading states -->
@@ -552,7 +574,7 @@
                 {/if}
 
                 {#each $articles as article, index (article.id + "-" + index)}
-                    <article class="article-container snap-start">
+                    <article class="article-container snap-start" on:touchend={() => handleTap(article)}>
                         <ArticleCard
                             {article}
                             {index}
