@@ -122,19 +122,38 @@ async function throttledRequest<T>(fn: () => Promise<T>): Promise<T> {
 
 async function fetchImagesSafely(page: any): Promise<string[]> {
     try {
-        const images = await page.images();
-        return images?.filter((img: any) => {
-            const url = img.url || '';
-            return (
-                url.match(/\.(jpg|jpeg|png|gif)$/i) &&
-                !url.includes('Commons-logo') &&
-                !url.includes('Wiki-logo') &&
-                !url.includes('Icon') &&
-                !url.endsWith('.svg')
-            );
-        }).map((img: any) => img.url) || [];
+        const [images, summary] = await Promise.all([
+            page.images(),
+            page.summary()
+        ]);
+
+        const validImages = [];
+
+        // Add thumbnail from summary if available
+        if (summary?.thumbnail?.source) {
+            validImages.push(summary.thumbnail.source);
+        }
+
+        // Add other valid images
+        if (images?.length) {
+            const filteredImages = images.filter((img: any) => {
+                const url = img.url || '';
+                return (
+                    url.match(/\.(jpg|jpeg|png|gif)$/i) &&
+                    !url.includes('Commons-logo') &&
+                    !url.includes('Wiki-logo') &&
+                    !url.includes('Icon') &&
+                    !url.endsWith('.svg') &&
+                    !url.includes('Placeholder') &&
+                    !url.includes('Symbol')
+                );
+            }).map((img: any) => img.url);
+            validImages.push(...filteredImages);
+        }
+
+        return [...new Set(validImages)]; // Remove duplicates
     } catch (error) {
-        console.warn('Error fetching images, falling back to summary:', error);
+        console.warn('Error fetching images:', error);
         return [];
     }
 }
