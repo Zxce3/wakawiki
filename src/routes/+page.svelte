@@ -211,34 +211,95 @@
     let contentReady = false;
     let initialLoadComplete = false;
 
-    // Improved initialization logic
+    const INITIAL_LOAD_TIMEOUT = 3000;
+    const SCROLL_DEBOUNCE = 150;
+    const LOAD_BATCH_SIZE = 3;
+    let initialLoadTimer: NodeJS.Timeout;
+    let scrollDebounceTimer: NodeJS.Timeout;
+    let loadingBatch = false;
+
     onMount(async () => {
         if (browser) {
             setLoading('initial', true, 'Loading your articles');
             
-            const initializeData = async () => {
-                try {
-                    if ((data as any).initialArticles?.length > 0) {
-                        articles.set((data as any).initialArticles);
-                    } else if ($articles.length === 0) {
-                        const initialData = await loadInitialData();
-                        language.set(initialData.initialLanguage);
-                        articles.set(initialData.initialArticles);
-                    }
+            // Set timeout for initial load
+            initialLoadTimer = setTimeout(() => {
+                setLoading('initial', false);
+                initialLoadComplete = true;
+            }, INITIAL_LOAD_TIMEOUT);
+
+            try {
+                if ($articles.length === 0) {
+                    // Load initial batch immediately
+                    await loadArticleBatch(LOAD_BATCH_SIZE);
                     contentReady = true;
-                } catch (err) {
-                    console.error('Failed to initialize:', err);
-                } finally {
-                    setLoading('initial', false);
-                    initialLoadComplete = true;
                 }
-            };
-            
-            await initializeData();
-            
-            // Start background loading only after initial content is ready
+            } catch (error) {
+                console.error('Initial load failed:', error);
+            } finally {
+                clearTimeout(initialLoadTimer);
+                setLoading('initial', false);
+                initialLoadComplete = true;
+            }
+        }
+    });
+
+    async function loadArticleBatch(count: number) {
+        if (!browser || loadingBatch) return;
+        
+        loadingBatch = true;
+        setLoading('article', true, 'Loading articles');
+        
+        try {
+            await loadMoreArticles(count);
+        } catch (error) {
+            console.error('Error loading articles:', error);
+        } finally {
+            loadingBatch = false;
+            setLoading('article', false);
+        }
+    }
+
+    const SCROLL_TRIGGER_THRESHOLD = 0.8;
+    let lastScrollTop = 0;
+
+    function handleScroll(e: Event) {
+        if (loadingBatch) return;
+
+        const container = e.target as HTMLElement;
+        const { scrollTop, clientHeight, scrollHeight } = container;
+
+        // Detect scroll direction
+        const scrollingDown = scrollTop > lastScrollTop;
+        lastScrollTop = scrollTop;
+
+        if (scrollingDown) {
+            const scrolledPercentage = (scrollTop + clientHeight) / scrollHeight;
+            if (scrolledPercentage > SCROLL_TRIGGER_THRESHOLD) {
+                loadMoreArticles(3);
+            }
+        }
+
+        // Update current index based on scroll position
+        const newIndex = Math.floor(scrollTop / clientHeight);
+        if (newIndex !== currentIndex) {
+            currentIndex = newIndex;
+            lastVisibleIndex = newIndex;
+            const visibleArticle = $articles[newIndex];
+            if (visibleArticle) handleArticleView(visibleArticle);
+        }
+    }
+
+    // Initial load
+    onMount(async () => {
+        if (browser) {
             if ($articles.length === 0) {
-                loadArticles();
+                loadingBatch = true;
+                try {
+                    await loadMoreArticles(5);
+                } finally {
+                    loadingBatch = false;
+                }
             }
         }
     });
@@ -326,59 +387,6 @@ function isArticleVisible(index: number): boolean {
 
 
 let scrollTimeout: NodeJS.Timeout;
-const SCROLL_DEBOUNCE = 100; 
-
-function handleScroll(e: Event) {
-    if (isLoading || $loadingMore) return;
-    
-    if (scrollTimeout) clearTimeout(scrollTimeout);
-    
-    scrollTimeout = setTimeout(() => {
-        const container = e.target as HTMLElement;
-        const scrollPosition = container.scrollTop;
-        const containerHeight = container.clientHeight;
-        const totalHeight = container.scrollHeight;
-        
-        
-        const newIndex = Math.floor(scrollPosition / containerHeight);
-        if (newIndex !== currentIndex) {
-            currentIndex = newIndex;
-            lastVisibleIndex = newIndex;
-            const visibleArticle = $articles[newIndex];
-            if (visibleArticle) handleArticleView(visibleArticle);
-        }
-        
-        
-        const remainingScroll = totalHeight - (scrollPosition + containerHeight);
-        const shouldLoadMore = remainingScroll < containerHeight * 1.5 || 
-                             $articles.length - (newIndex + 1) < 3; 
-        
-        if (shouldLoadMore) {
-            loadArticles();
-        }
-    }, 100); 
-}
-
-
-async function loadArticleBatch(count: number) {
-    if (!browser || isLoading) return;
-    
-    const now = Date.now();
-    if (now - lastLoadTime < LOAD_COOLDOWN) return;
-    
-    isLoading = true;
-    setLoading('article', true, 'Loading articles');
-    
-    try {
-        await loadMoreArticles(count);
-        lastLoadTime = Date.now();
-    } catch (error) {
-        console.error('Error loading articles:', error);
-    } finally {
-        isLoading = false;
-        setLoading('article', false);
-    }
-}
 
 onMount(() => {
     if (browser) {
@@ -393,11 +401,11 @@ onMount(() => {
 
 <!-- Main container with loading states -->
 <div class="fixed inset-0 bg-black">
-    {#if isContentLoading}
+    {#if !initialLoadComplete}
         <div class="absolute inset-0 flex items-center justify-center z-50">
             <LoadingSpinner 
                 size="lg"
-                message={$articleLoading.message || $languageLoading.message || "Loading your articles"}
+                message="Loading your articles"
                 show={true}
                 fullscreen={true}
             />
@@ -406,7 +414,7 @@ onMount(() => {
         <div class="absolute inset-0 flex items-center justify-center">
             <LoadingSpinner 
                 size="md"
-                message="Finding interesting articles"
+                message="Finding articles"
                 show={true}
             />
         </div>
@@ -473,7 +481,7 @@ onMount(() => {
                 bind:this={articlesContainer}
                 on:scroll={handleScroll}
                 role="feed"
-                aria-busy={isLoading}
+                aria-busy={loadingBatch}
                 aria-label="Articles feed"
             >
                 <!-- Initial Loading State -->
@@ -516,7 +524,7 @@ onMount(() => {
                 {/each}
                 
                 <!-- Loading More Indicator -->
-                {#if $loadingMore && !articlesLoading}
+                {#if loadingBatch}
                     <div 
                         class="w-full flex justify-center py-4"
                         aria-live="polite"
