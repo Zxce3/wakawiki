@@ -529,13 +529,6 @@ onMount(() => {
                     </div>
                 {/if}
 
-                <!-- Buffer status indicator -->
-                <div 
-                    class="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm text-white/90 text-sm"
-                    transition:fade
-                >
-                    Loading more articles...
-                </div>
             </main>
 
             <!-- Loading overlays -->
