@@ -5,6 +5,7 @@
     import FeedbackBar from './FeedbackBar.svelte';
     import LoadingSpinner from './LoadingSpinner.svelte';
     import { fetchArticleImages } from '../api/wikipedia';
+    import { fade } from 'svelte/transition';
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
@@ -219,13 +220,19 @@
         <!-- Add recommendation label if article is recommended -->
         {#if isRecommended && score}
             <div class="mb-3">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white/10 backdrop-blur-sm text-white/90">
+                <span 
+                    class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium bg-white/10 backdrop-blur-sm text-white transition-all hover:bg-white/15"
+                    in:fade={{ duration: 200 }}
+                >
                     {#if score > 0.8}
-                        ⭐ Highly Recommended
+                        <span class="text-yellow-400">⭐</span>
+                        <span>Highly Recommended</span>
                     {:else if score > 0.6}
-                        📚 Similar Content
+                        <span class="text-blue-400">📚</span>
+                        <span>Similar Content</span>
                     {:else}
-                        💡 You Might Like
+                        <span class="text-emerald-400">💡</span>
+                        <span>You Might Like</span>
                     {/if}
                 </span>
             </div>
