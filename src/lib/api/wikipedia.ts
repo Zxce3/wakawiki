@@ -365,25 +365,189 @@ export async function fetchCategoryMembers(category: string, language: Supported
 /**
  * Fetches pages linked from a specific article
  */
-export async function fetchLinkedPages(articleId: string, language: SupportedLanguage) {
-  try {
-    await ensureLanguage(language);
-    const page = await wiki.page(articleId);
-    const links = await page.links();
-
-    const articles = await Promise.all(
-      links.slice(0, 10).map(async link => {
-        const summary = await wiki.summary(link);
-        return convertToArticle(summary, language);
-      })
-    );
-
-    return articles;
-  } catch (error) {
-    console.error('Error fetching linked pages:', error);
-    return [];
-  }
+interface LinkedPagesCache {
+    articles: WikiArticle[];
+    timestamp: number;
+    language: SupportedLanguage;
 }
+
+const linkedPagesCache = new Map<string, LinkedPagesCache>();
+const LINKED_PAGES_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const MAX_LINKED_PAGES = 15;
+
+/**
+ * Fetches pages linked from a specific article with enhanced features:
+ * - Caching support
+ * - Better error handling
+ * - Quality filtering
+ * - Metadata enrichment
+ */
+export async function fetchLinkedPages(articleId: string, language: SupportedLanguage) {
+    // Check cache first
+    const cached = linkedPagesCache.get(articleId);
+    if (cached && 
+        cached.language === language && 
+        Date.now() - cached.timestamp < LINKED_PAGES_CACHE_DURATION) {
+        return cached.articles;
+    }
+
+    try {
+        await ensureLanguage(language);
+        const page = await wiki.page(articleId);
+        const [links, categories] = await Promise.all([
+            page.links(),
+            page.categories()
+        ]);
+
+        // Filter out non-article links
+        const filteredLinks = links
+            .filter(link => {
+                const title = String(link);
+                return (
+                    !title.includes(':') &&
+                    !title.includes('List of') &&
+                    !title.startsWith('&') &&
+                    !title.match(/\d{4}/) &&
+                    title.length > 1 &&
+                    !title.includes('(') && // Avoid disambiguation pages
+                    !title.match(/^[A-Z]{2,}$/) // Avoid acronyms
+                );
+            })
+            .slice(0, MAX_LINKED_PAGES * 2); // Get more links than needed to account for failures
+
+        // Fetch articles in batches
+        const validArticles = await fetchArticleBatch(filteredLinks, language, categories);
+
+        // Sort by relevance score
+        validArticles.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+        // Take only the required number of articles
+        const finalArticles = validArticles.slice(0, MAX_LINKED_PAGES);
+
+        // Cache the results
+        linkedPagesCache.set(articleId, {
+            articles: finalArticles,
+            timestamp: Date.now(),
+            language
+        });
+
+        return finalArticles;
+    } catch (error) {
+        console.error('Error fetching linked pages:', error);
+        return [];
+    }
+}
+
+// Add these utility functions at the top with other utilities
+function sanitizeTitle(title: string): string {
+    return title.trim()
+        .replace(/[^\w\s-]/g, '') // Remove special characters
+        .replace(/\s+/g, '_');    // Replace spaces with underscores
+}
+
+async function fetchArticleBatch(links: string[], language: SupportedLanguage, categories: string[]) {
+    const validArticles: WikiArticle[] = [];
+    const batchSize = 5; // Process 5 articles at a time
+    
+    for (let i = 0; i < links.length; i += batchSize) {
+        const batch = links.slice(i, i + batchSize);
+        await delay(300); // Add delay between batches
+        
+        const articlePromises = batch.map(async (link) => {
+            try {
+                const sanitizedLink = sanitizeTitle(link);
+                if (!sanitizedLink) return null;
+
+                // Try to get from cache first
+                const cacheKey = `${language}-${sanitizedLink}`;
+                const cached = linkedPagesCache.get(cacheKey);
+                if (cached && Date.now() - cached.timestamp < LINKED_PAGES_CACHE_DURATION) {
+                    return cached.articles[0];
+                }
+
+                const summary = await wiki.summary(sanitizedLink);
+                
+                // Basic validation
+                if (!summary?.extract || 
+                    summary.extract.length < 50 || 
+                    !summary.title || 
+                    !summary.pageid) {
+                    return null;
+                }
+
+                const article = convertToArticle(summary, language);
+                article.isRecommendation = true;
+                article.score = calculateRelevanceScore(summary, categories);
+                article.categories = categories
+                    .slice(0, 3)
+                    .map(cat => cat.replace(/^Category:/, ''));
+
+                return article;
+            } catch (err) {
+                // Only log 404s in debug mode
+                if (err?.toString().includes('404')) {
+                    console.debug(`Article not found: ${link}`);
+                } else {
+                    console.warn(`Error fetching article ${link}:`, err);
+                }
+                return null;
+            }
+        });
+
+        const batchResults = await Promise.all(articlePromises);
+        validArticles.push(...batchResults.filter((article): article is WikiArticle => article !== null));
+
+        // Break early if we have enough articles
+        if (validArticles.length >= MAX_LINKED_PAGES) {
+            break;
+        }
+    }
+
+    return validArticles;
+}
+
+/**
+ * Calculate relevance score based on content quality and relationship to parent
+ */
+function calculateRelevanceScore(summary: WikiSummary, parentCategories: string[]): number {
+    let score = 0;
+
+    // Content length score (0-0.3)
+    score += Math.min(0.3, (summary.extract?.length || 0) / 2000);
+
+    // Has image bonus (0-0.2)
+    if (summary.thumbnail?.source) {
+        score += 0.2;
+    }
+
+    // Category match bonus (0-0.3)
+    if (summary.categories) {
+        const categoryOverlap = summary.categories.filter((cat: string) => 
+            parentCategories.some(parentCat => 
+                parentCat.toLowerCase().includes(cat.toLowerCase()) ||
+                cat.toLowerCase().includes(parentCat.toLowerCase())
+            )
+        ).length;
+        score += Math.min(0.3, categoryOverlap * 0.1);
+    }
+
+    // Page length bonus (0-0.2)
+    if (summary.pageprops?.page_len) {
+        score += Math.min(0.2, Number(summary.pageprops.page_len) / 20000);
+    }
+
+    return Math.min(1, score);
+}
+
+// Clean up old cache entries periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, cache] of linkedPagesCache.entries()) {
+        if (now - cache.timestamp > LINKED_PAGES_CACHE_DURATION) {
+            linkedPagesCache.delete(key);
+        }
+    }
+}, LINKED_PAGES_CACHE_DURATION);
 
 interface CategoryResponse {
     query: {
