@@ -57,6 +57,9 @@ const loadingState = {
 // Worker initialization
 let articleLoaderWorker: Worker | undefined;
 
+const PARALLEL_ARTICLE_LOAD = 3;
+const PRELOAD_BATCH_SIZE = 5;
+
 if (browser) {
     try {
         articleLoaderWorker = new Worker(
@@ -64,39 +67,66 @@ if (browser) {
             { type: 'module' }
         );
 
+        const LOADING_TIMEOUT = 5000;
+        let loadingTimer: NodeJS.Timeout;
+
         articleLoaderWorker.onmessage = (event) => {
-            const { type, articles: newArticles, error, count } = event.data;
+            const { type, article, articles: newArticles, error } = event.data;
+            
+            // Clear any pending timeouts
+            if (loadingTimer) clearTimeout(loadingTimer);
             
             switch (type) {
+                case 'article':
+                    // Single article handling
+                    articles.update(existing => {
+                        const updated = article && !existing.some(a => a.id === article.id) 
+                            ? [...existing, article]
+                            : existing;
+                        loadingMore.set(false);
+                        loadingState.isLoading = false;
+                        return updated;
+                    });
+                    break;
+
                 case 'articles':
+                    // Batch articles handling
                     if (Array.isArray(newArticles) && newArticles.length > 0) {
                         articles.update(existing => {
-                            const combined = existing.length === 0 ? 
-                                newArticles : 
-                                [...existing, ...newArticles];
-                            return combined;
-                        });
-                        loadingMore.set(false);
-                        initializing.set(false);
-                        
-                        // Prefetch next batch
-                        articleLoaderWorker?.postMessage({
-                            type: 'prefetch',
-                            language: get(language)
+                            const uniqueArticles = newArticles.filter(
+                                newArticle => !existing.some(e => e.id === newArticle.id)
+                            );
+                            const updatedArticles = [...existing, ...uniqueArticles];
+                            
+                            // Trigger next batch load if needed
+                            if (updatedArticles.length < 10) { // Keep minimum buffer
+                                queueMicrotask(() => loadMoreArticles(PRELOAD_BATCH_SIZE));
+                            }
+                            
+                            return updatedArticles;
                         });
                     }
+                    loadingMore.set(false);
+                    loadingState.isLoading = false;
                     break;
-                
-                case 'bufferStatus':
-                    articleBuffer.set(count);
-                    break;
-                    
+
                 case 'error':
                     console.error('Article loader error:', error);
                     loadingMore.set(false);
+                    loadingState.isLoading = false;
                     break;
             }
+            
+            initializing.set(false);
         };
+
+        // Safety timeout
+        loadingTimer = setTimeout(() => {
+            loadingMore.set(false);
+            loadingState.isLoading = false;
+            initializing.set(false);
+        }, LOADING_TIMEOUT);
+
     } catch (error) {
         console.error('Failed to initialize article loader worker:', error);
         initializing.set(false);
@@ -429,18 +459,26 @@ if (browser) {
 
 if (browser) {
     language.subscribe(lang => {
+        // Clear everything when language changes
         articles.set([]);
+        articleBuffer.set([]);
+        loadingMore.set(false);
+        loadingState.isLoading = false;
+
         if (articleLoaderWorker) {
             try {
                 articleLoaderWorker.postMessage({
                     type: 'changeLanguage',
                     language: lang
                 });
-                loadMoreArticles(BATCH_SIZE * 2);
-                preloadArticles();
+                
+                // Wait a bit before loading new articles
+                setTimeout(() => {
+                    loadMoreArticles(BATCH_SIZE);
+                }, 100);
+                
             } catch (error) {
                 console.error('Error changing language:', error);
-                loadingMore.set(false);
                 loadingStatus.update(s => ({ ...s, error: 'Failed to change language' }));
             }
         }
@@ -506,40 +544,65 @@ async function fetchQualityArticle(language: SupportedLanguage): Promise<WikiArt
  * Loads more articles into the store.
  */
 export async function loadMoreArticles(count = loadingState.batchSize) {
-    if (loadingState.isLoading) return;
+    if (loadingState.isLoading || get(loadingMore)) return;
     
-    loadingState.isLoading = true;
+    const currentArticles = get(articles);
+    if (currentArticles.length >= 100) return; // Maximum limit
+    
     loadingMore.set(true);
-    
+    loadingState.isLoading = true;
+
     try {
         if (browser && articleLoaderWorker) {
+            // Clear any previous recommendations
+            recommendations.set(new Map());
+            
             articleLoaderWorker.postMessage({
                 type: 'load',
                 language: get(language),
                 count,
-                immediate: get(articles).length === 0 // Signal immediate loading needed
+                immediate: currentArticles.length === 0
             });
-            
-            articleLoaderWorker.postMessage({
-                type: 'prefetch',
-                language: get(language)
-            });
-        } else {
-            const newArticles = await loadQualityArticles(count);
-            articles.update(existing => [...existing, ...newArticles]);
+
+            // Set a timeout to reset loading state
+            setTimeout(() => {
+                loadingMore.set(false);
+                loadingState.isLoading = false;
+            }, 5000);
         }
-        loadingState.retryCount = 0;
     } catch (error) {
         console.error('Error loading articles:', error);
-        loadingState.retryCount++;
-        
-        if (loadingState.retryCount < loadingState.maxRetries) {
-            setTimeout(() => loadMoreArticles(count), 1000);
-        }
-    } finally {
-        loadingState.isLoading = false;
         loadingMore.set(false);
+        loadingState.isLoading = false;
     }
+}
+
+// Handle worker messages
+if (browser) {
+    articleLoaderWorker?.addEventListener('message', (event) => {
+        const { type, articles: newArticles, error } = event.data;
+        
+        switch (type) {
+            case 'articles':
+                if (Array.isArray(newArticles) && newArticles.length > 0) {
+                    articles.update(existing => {
+                        const uniqueArticles = newArticles.filter(
+                            newArticle => !existing.some(e => e.id === newArticle.id)
+                        );
+                        return [...existing, ...uniqueArticles];
+                    });
+                }
+                loadingMore.set(false);
+                loadingState.isLoading = false;
+                break;
+
+            case 'error':
+                console.error('Article loader error:', error);
+                loadingMore.set(false);
+                loadingState.isLoading = false;
+                break;
+        }
+    });
 }
 
 /**
@@ -588,24 +651,6 @@ function isArticleDiverse(article: WikiArticle, existingArticles: WikiArticle[])
             prevArticle.id !== article.id &&
             prevArticle.title.toLowerCase() !== article.title.toLowerCase()
         );
-    });
-}
-
-if (browser) {
-    language.subscribe(lang => {
-        articles.set([]);
-        if (articleLoaderWorker) {
-            try {
-                articleLoaderWorker.postMessage({
-                    type: 'changeLanguage',
-                    language: lang
-                });
-            } catch (error) {
-                console.error('Error changing language:', error);
-                loadingMore.set(false);
-                loadingStatus.update(s => ({ ...s, error: 'Failed to change language' }));
-            }
-        }
     });
 }
 
