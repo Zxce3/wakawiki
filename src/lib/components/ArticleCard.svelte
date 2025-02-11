@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, afterUpdate } from "svelte";
     import type {
         WikiArticle,
         FeedbackType,
@@ -56,6 +56,22 @@
 
     // Add new variable to track if image is SVG
     let isSVG = false;
+
+    // Add touch event options
+    const touchEventOptions = { passive: true };
+
+    // Add this function for gradient animation
+    function getRandomGradient() {
+        const gradients = [
+            "from-blue-500/30 to-purple-500/30",
+            "from-emerald-500/30 to-blue-500/30",
+            "from-purple-500/30 to-pink-500/30",
+            "from-pink-500/30 to-orange-500/30",
+        ];
+        return gradients[Math.floor(Math.random() * gradients.length)];
+    }
+
+    let fallbackGradient = getRandomGradient();
 
     onMount(() => {
         mounted = true;
@@ -180,48 +196,72 @@
     }
 
     function updateImageLayout() {
-        if (!imageElement || !containerElement) return;
+        // Add null checks and requestAnimationFrame wrapper
+        if (!imageElement || !containerElement || !mounted) return;
 
+        // Ensure DOM is ready
         requestAnimationFrame(() => {
-            const img = imageElement;
-            const container = containerElement;
-            const imgAspect = img.naturalWidth / img.naturalHeight;
-            const containerAspect =
-                container.clientWidth / container.clientHeight;
+            try {
+                const img = imageElement;
+                const container = containerElement;
 
-            img.style.cssText = `
-                opacity: 1;
-                position: absolute;
-                transition: opacity 0.3s ease;
-                max-width: none;
-                max-height: none;
-            `;
+                // Guard against null elements
+                if (!img || !container || !img.naturalWidth || !img.naturalHeight) {
+                    return;
+                }
 
-            if (imgAspect > containerAspect) {
-                img.style.width = "100%";
-                img.style.height = "auto";
-                img.style.top = "50%";
-                img.style.left = "0";
-                img.style.transform = "translateY(-50%)";
-            } else {
-                img.style.height = "100%";
-                img.style.width = "auto";
-                img.style.left = "50%";
-                img.style.top = "0";
-                img.style.transform = "translateX(-50%)";
+                const imgAspect = img.naturalWidth / img.naturalHeight;
+                const containerAspect = container.clientWidth / container.clientHeight;
+
+                img.style.cssText = `
+                    opacity: 1;
+                    position: absolute;
+                    transition: opacity 0.3s ease;
+                    max-width: none;
+                    max-height: none;
+                `;
+
+                if (imgAspect > containerAspect) {
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.top = '50%';
+                    img.style.left = '0';
+                    img.style.transform = 'translateY(-50%)';
+                } else {
+                    img.style.height = '100%';
+                    img.style.width = 'auto';
+                    img.style.left = '50%';
+                    img.style.top = '0';
+                    img.style.transform = 'translateX(-50%)';
+                }
+            } catch (error) {
+                console.warn('Error updating image layout:', error);
             }
         });
     }
 
     function handleImageLoad(event: Event) {
+        if (!mounted) return;
+        
         imageElement = event.target as HTMLImageElement;
         imageLoading = false;
         imageError = false;
-        // Check if image is SVG based on URL or mime type
-        isSVG = article.imageUrl?.toLowerCase().endsWith('.svg') || 
-                imageElement.src.includes('data:image/svg+xml');
-        updateImageLayout();
+        
+        // Wait for next frame to ensure container is mounted
+        requestAnimationFrame(() => {
+            if (mounted && containerElement) {
+                isSVG = article.imageUrl?.toLowerCase().endsWith('.svg') || 
+                        imageElement.src.includes('data:image/svg+xml');
+                updateImageLayout();
+            }
+        });
     }
+
+    afterUpdate(() => {
+        if (mounted && imageElement && containerElement) {
+            updateImageLayout();
+        }
+    });
 
     function handleImageError() {
         imageError = true;
@@ -249,8 +289,33 @@
     }
 </script>
 
-<div class="relative w-full h-full bg-black" bind:this={containerElement}>
-    <!-- Immediate loading feedback -->
+<div
+    bind:this={containerElement}
+    class="article-card h-full w-full flex items-center justify-center relative overflow-hidden"
+    class:active
+    on:touchstart|passive
+    on:touchend|passive
+>
+    <div
+        class="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none select-none hidden md:flex items-center gap-2"
+        style="writing-mode: vertical-rl; text-orientation: mixed;"
+    >
+        <span class="text-sm">Swipe left for related articles</span>
+        <svg
+            class="w-4 h-4 rotate-90"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+        >
+            <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5l7 7-7 7"
+            />
+        </svg>
+    </div>
+
     {#if !contentLoaded}
         <div
             class="absolute inset-0 bg-black/80 flex items-center justify-center"
@@ -261,28 +326,29 @@
         </div>
     {/if}
 
-    <!-- Base background -->
     <div
         class="absolute inset-0 bg-gradient-to-b from-neutral-800/80 to-neutral-900/60"
     ></div>
 
-    <!-- Optimized image loading -->
     <div class="absolute inset-0">
         {#if article.imageUrl && !imageError}
             <div class="relative w-full h-full">
-                <!-- Loading placeholder -->
                 {#if imageLoading}
-                    <div class="absolute inset-0 bg-neutral-800 animate-pulse"></div>
+                    <div
+                        class="absolute inset-0 bg-neutral-800 animate-pulse"
+                    ></div>
                 {/if}
 
-                <!-- Background for transparent images -->
                 {#if isSVG}
-                    <div class="absolute inset-0 bg-gradient-to-b from-neutral-60 to-neutral-700"></div>
+                    <div
+                        class="absolute inset-0 bg-gradient-to-b from-neutral-60 to-neutral-700"
+                    ></div>
                 {:else}
-                    <div class="absolute inset-0 bg-gradient-to-b from-black-60 to-black-70"></div>
+                    <div
+                        class="absolute inset-0 bg-gradient-to-b from-black-60 to-black-70"
+                    ></div>
                 {/if}
 
-                <!-- Main image -->
                 <img
                     src={article.imageUrl}
                     alt={article.title}
@@ -296,22 +362,91 @@
                     on:error={handleImageError}
                 />
 
-                <!-- Gradient overlays -->
                 <div
                     class="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50 pointer-events-none"
                 ></div>
             </div>
         {:else}
-            <!-- Fallback gradient background -->
             <div
-                class="absolute inset-0 bg-gradient-to-b from-neutral-600 to-neutral-800"
-            ></div>
+                class="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center overflow-hidden"
+            >
+                <div class="relative w-full h-full">
+                    <div
+                        class="absolute inset-0 flex items-center justify-center"
+                    >
+                        <div class="relative">
+                            <div class="flex flex-col items-center gap-4">
+                                <span
+                                    class="text-[20vw] md:text-[15vw] font-bold text-white opacity-10 transform-gpu animate-pulse select-none"
+                                >
+                                    W
+                                </span>
+                                <span class="text-white/50 text-sm"
+                                    >No Image</span
+                                >
+                            </div>
+
+                            <svg
+                                class="absolute inset-0 w-full h-full -translate-y-1/2 top-1/2"
+                                viewBox="0 0 100 100"
+                            >
+                                <defs>
+                                    <linearGradient
+                                        id="ringGradient"
+                                        x1="0%"
+                                        y1="0%"
+                                        x2="100%"
+                                        y2="0%"
+                                    >
+                                        <stop
+                                            offset="0%"
+                                            style="stop-color:#ffffff;stop-opacity:0.1"
+                                        />
+                                        <stop
+                                            offset="50%"
+                                            style="stop-color:#ffffff;stop-opacity:0.3"
+                                        />
+                                        <stop
+                                            offset="100%"
+                                            style="stop-color:#ffffff;stop-opacity:0.1"
+                                        />
+                                    </linearGradient>
+                                </defs>
+
+                                <circle
+                                    cx="50"
+                                    cy="50"
+                                    r="45"
+                                    fill="none"
+                                    stroke="url(#ringGradient)"
+                                    stroke-width="0.5"
+                                    class="animate-spin-slow"
+                                    style="transform-origin: center; animation-duration: 15s;"
+                                />
+
+                                <circle
+                                    cx="50"
+                                    cy="50"
+                                    r="35"
+                                    fill="none"
+                                    stroke="url(#ringGradient)"
+                                    stroke-width="0.5"
+                                    class="animate-spin-slow"
+                                    style="transform-origin: center; animation-duration: 10s; animation-direction: reverse;"
+                                />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div
+                        class="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50 pointer-events-none"
+                    ></div>
+                </div>
+            </div>
         {/if}
     </div>
 
-    <!-- Content container -->
     <div class="absolute inset-x-0 bottom-0 z-10 p-4 sm:p-6">
-        <!-- Add recommendation label if article is recommended -->
         {#if isRecommended && score}
             <div class="mb-3">
                 <span
@@ -439,7 +574,6 @@
         <div
             class="absolute right-4 top-1/2 -translate-y-1/2 z-[50] hidden md:flex flex-col gap-4"
         >
-            <!-- Decreased z-index from 102 to 50 -->
             <button
                 class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
                 on:click={() => onNavigate("up")}
@@ -464,7 +598,6 @@
                 on:click={() => onNavigate("down")}
                 aria-label="Navigate down"
             >
-                <!-- Fixed viewBox attribute here -->
                 <svg
                     class="w-6 h-6 text-white group-hover:scale-110 transition-transform"
                     fill="none"
@@ -503,3 +636,27 @@
         </div>
     {/if}
 </div>
+
+<style>
+    @keyframes gradient {
+        0% {
+            transform: rotate(0deg);
+        }
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .animate-spin-slow {
+        animation: spin 20s linear infinite;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>

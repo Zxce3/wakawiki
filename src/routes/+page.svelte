@@ -1,6 +1,6 @@
 <script lang="ts">
     export let data;
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import { browser } from "$app/environment";
     import {
         articles,
@@ -29,6 +29,7 @@
     import { fetchRandomArticle } from "$lib/api/wikipedia";
     import { getBrowserLanguage, getStoredLanguage } from "$lib/storage/utils";
     import { error } from "@sveltejs/kit";
+    import RelatedArticles from "$lib/components/RelatedArticles.svelte";
 
     const INITIAL_ARTICLES_COUNT = 6;
 
@@ -97,6 +98,7 @@
     let container: HTMLElement;
     let showLikedArticles = false;
     let showLanguageSelector = false;
+    let showRelatedArticles = false;
 
     let touchStart = 0;
     let touchEnd = 0;
@@ -119,19 +121,43 @@
         });
     }
 
+    // Add these variables for touch tracking
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    // Add touch event options
+    const touchEventOptions = { passive: true };
+
     function handleTouchStart(e: TouchEvent) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
         touchStart = e.changedTouches[0].screenY;
     }
 
     function handleTouchEnd(e: TouchEvent) {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
         touchEnd = e.changedTouches[0].screenY;
-        const diff = touchStart - touchEnd;
 
-        if (Math.abs(diff) > 50) {
-            if (diff > 0 && currentIndex < $articles.length - 1) {
-                currentIndex++;
-            } else if (diff < 0 && currentIndex > 0) {
-                currentIndex--;
+        // Calculate swipe distance and direction
+        const deltaX = touchStartX - touchEndX;
+        const deltaY = touchStartY - touchEndY;
+
+        // Only handle horizontal swipe if it's more horizontal than vertical
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            if (deltaX > 50) {
+                // Left swipe
+                showRelatedArticles = true;
+            }
+        } else {
+            // Handle vertical swipe as before
+            const diff = touchStart - touchEnd;
+            if (Math.abs(diff) > 50) {
+                if (diff > 0 && currentIndex < $articles.length - 1) {
+                    currentIndex++;
+                } else if (diff < 0 && currentIndex > 0) {
+                    currentIndex--;
+                }
             }
         }
     }
@@ -403,10 +429,46 @@
         showLanguageSelector = false;
     };
 
-    function handleArticleSelect(article: WikiArticle) {
+    async function handleArticleSelect(article: WikiArticle) {
+        if (!article?.title || !article?.id) {
+            console.warn("Invalid article selected:", article);
+            return;
+        }
+
         showLikedArticles = false;
+        showRelatedArticles = false;
         setLoading("article", true, "Loading selected article");
-        handleArticleChange(article);
+
+        try {
+            // Insert the selected article after the current one
+            const currentIdx = currentIndex;
+            articles.update((existing) => {
+                const newArticles = [...existing];
+                newArticles.splice(currentIdx + 1, 0, article);
+                return newArticles;
+            });
+
+            // Wait for DOM update
+            await tick();
+
+            // Scroll to the newly added article
+            const targetIndex = currentIdx + 1;
+            currentIndex = targetIndex;
+
+            if (articlesContainer) {
+                const windowHeight = window.innerHeight;
+                articlesContainer.scrollTo({
+                    top: windowHeight * targetIndex,
+                    behavior: "smooth",
+                });
+            }
+
+            await handleArticleChange(article);
+        } catch (error) {
+            console.error("Error handling selected article:", error);
+        } finally {
+            setLoading("article", false);
+        }
     }
 
     function isArticleVisible(index: number): boolean {
@@ -429,10 +491,10 @@
     function handleTap(article: WikiArticle) {
         const currentTime = Date.now();
         const tapLength = currentTime - lastTapTime;
-        
+
         if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
             // Double tap detected
-            likedArticles.update(set => {
+            likedArticles.update((set) => {
                 const newSet = new Set(set);
                 if (newSet.has(article.id)) {
                     newSet.delete(article.id);
@@ -446,7 +508,6 @@
     }
 </script>
 
-<!-- Main container with loading states -->
 <div class="fixed inset-0 bg-black">
     {#if !initialLoadComplete}
         <div class="absolute inset-0 flex items-center justify-center z-50">
@@ -468,7 +529,6 @@
             class:opacity-0={!contentReady}
             class:opacity-100={contentReady}
         >
-            <!-- Navigation Controls -->
             <nav
                 class="fixed top-0 inset-x-0 z-50 flex justify-between items-center p-4 max-w-[500px] mx-auto"
                 aria-label="Main navigation"
@@ -483,29 +543,52 @@
                     >
                 </button>
 
-                <button
-                    class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
-                    on:click={() => (showLikedArticles = true)}
-                    aria-label="Show Liked Articles"
-                >
-                    <div class="flex items-center gap-2">
-                        <svg
-                            class="w-6 h-6 text-red-500"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                            />
-                        </svg>
-                        <span class="text-white font-medium"
-                            >{$likedArticles.size}</span
-                        >
-                    </div>
-                </button>
+                <div class="flex gap-2">
+                    <button
+                        class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
+                        on:click={() => (showRelatedArticles = true)}
+                        aria-label="Show Related Articles"
+                    >
+                        <div class="flex items-center gap-2">
+                            <svg
+                                class="w-6 h-6 text-blue-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"
+                                />
+                            </svg>
+                        </div>
+                    </button>
+
+                    <button
+                        class="p-3 rounded-full bg-black/40 backdrop-blur transition-colors hover:bg-black/60"
+                        on:click={() => (showLikedArticles = true)}
+                        aria-label="Show Liked Articles"
+                    >
+                        <div class="flex items-center gap-2">
+                            <svg
+                                class="w-6 h-6 text-red-500"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                                />
+                            </svg>
+                            <span class="text-white font-medium"
+                                >{$likedArticles.size}</span
+                            >
+                        </div>
+                    </button>
+                </div>
             </nav>
 
-            <!-- Desktop Navigation Buttons -->
             <div
                 class="fixed right-8 top-1/2 -translate-y-1/2 z-[102] hidden md:flex flex-col gap-4"
             >
@@ -533,7 +616,6 @@
                     on:click={() => scrollToArticle("down")}
                     aria-label="Scroll Down"
                 >
-                    <!-- Fixed viewBox attribute here -->
                     <svg
                         class="w-6 h-6 text-white group-hover:scale-110 transition-transform"
                         fill="none"
@@ -550,7 +632,6 @@
                 </button>
             </div>
 
-            <!-- Articles Container -->
             <main
                 class="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-none"
                 bind:this={articlesContainer}
@@ -559,7 +640,6 @@
                 aria-busy={loadingBatch}
                 aria-label="Articles feed"
             >
-                <!-- Initial Loading State -->
                 {#if articlesLoading && $articles.length === 0}
                     <div
                         class="absolute inset-0 flex items-center justify-center"
@@ -574,7 +654,13 @@
                 {/if}
 
                 {#each $articles as article, index (article.id + "-" + index)}
-                    <article class="article-container snap-start" on:touchend={() => handleTap(article)}>
+                    <article
+                        class="article-container snap-start"
+                        on:touchstart={handleTouchStart}
+                        on:touchend={handleTouchEnd}
+                        on:touchstart|passive
+                        on:touchend|passive
+                    >
                         <ArticleCard
                             {article}
                             {index}
@@ -588,7 +674,6 @@
                         />
                     </article>
 
-                    <!-- Insert project ad -->
                     {#if shouldShowAd(index)}
                         <aside
                             class="article-container snap-start"
@@ -599,7 +684,6 @@
                     {/if}
                 {/each}
 
-                <!-- Loading More Indicator -->
                 {#if loadingBatch}
                     <div
                         class="w-full flex justify-center py-4"
@@ -614,7 +698,6 @@
                 {/if}
             </main>
 
-            <!-- Loading overlays -->
             {#if $articleLoading.isLoading || $languageLoading.isLoading}
                 <div
                     class="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center"
@@ -632,8 +715,7 @@
     {/if}
 </div>
 
-<!-- Modals -->
-{#if showLanguageSelector || showLikedArticles}
+{#if showLanguageSelector || showLikedArticles || showRelatedArticles}
     <div class="fixed inset-0 z-[200] bg-black/80">
         {#if showLanguageSelector}
             <LanguageSelector isOpen={true} {onClose} {onSelect} />
@@ -644,11 +726,17 @@
                 onClose={() => (showLikedArticles = false)}
                 onArticleSelect={handleArticleSelect}
             />
+        {:else if showRelatedArticles}
+            <RelatedArticles
+                isOpen={true}
+                currentArticle={$articles[currentIndex]}
+                onClose={() => (showRelatedArticles = false)}
+                onArticleSelect={handleArticleSelect}
+            />
         {/if}
     </div>
 {/if}
 
-<!-- Add buffer status indicator -->
 {#if $articleBuffer.length > 0}
     <div
         class="fixed bottom-4 left-4 px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm text-white/90 text-sm"
@@ -658,7 +746,6 @@
     </div>
 {/if}
 
-<!-- Add loading indicator -->
 {#if isLoading}
     <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
         <div
