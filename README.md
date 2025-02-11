@@ -1,38 +1,31 @@
-# sv
+# WakaWiki
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A modern wiki reader 
 
-## Creating a project
+## Features
+- Vertical scrolling feed of random Wikipedia articles
+- Support for 14 languages including English, Spanish, French, German, Chinese, Japanese and more
+- Article previews with images, titles and excerpts
+- Language selector with country flags
+- Client-side recommendations via Web Workers
+- Real-time personalized content recommendations
+- Responsive design for mobile and desktop
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Tech Stack
+- SvelteKit: Framework for building the client-side UI
+- Web Workers: For AI recommendation processing
+- Web Storage: (Local Storage) for user data persistence
+- Wikipedia API: Dynamic article content fetching
 
-```bash
-# create a new project in the current directory
-npx sv create
 
-# create a new project in my-app
-npx sv create my-app
-```
+## How It Works
+1. Users browse and interact with articles
+2. Interactions are stored in Web Storage
+3. Web Worker processes data to generate recommendations (hope)
+4. UI updates in real-time with new suggestions
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+## Future Enhancements
+- Enhanced recommendation algorithms
+- Full offline functionality
+- Cross-device data synchronization?
+- and more
