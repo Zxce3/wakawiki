@@ -61,30 +61,35 @@ type WorkerMessage =
     | { type: 'initialize'; categories: string[]; language: SupportedLanguage }
     | LocalUserInteraction[];
 
+let currentWorkerLanguage: SupportedLanguage = 'en';
+
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     try {
         if (Array.isArray(event.data)) {
-            // Handle user interactions
             const interactions = event.data;
             if (interactions.length === 0) {
-                console.log('No interactions provided');
-                self.postMessage([]);
                 return;
             }
 
-            const language = interactions[0].language;
+            const language = interactions[0].language as SupportedLanguage;
+            if (currentWorkerLanguage !== language) {
+                currentWorkerLanguage = language;
+                wiki.setLang(language);
+                recommendationCache.clear();
+            }
+
             console.log(`Processing recommendations for language: ${language}`);
-            await wiki.setLang(language);
             const recommendations = await generateRecommendations(interactions);
-            console.log('Generated recommendations:', recommendations);
             self.postMessage(recommendations);
         } 
         else if (event.data.type === 'initialize') {
-            // Handle initialization with liked categories
             const { categories, language } = event.data;
+            currentWorkerLanguage = language;
+            wiki.setLang(language);
+            recommendationCache.clear();
+
             if (categories.length > 0) {
                 console.log('Initializing with liked categories:', categories);
-                await wiki.setLang(language);
                 const recommendations = await generateCategoryBasedRecommendations(categories, language);
                 self.postMessage(recommendations);
             }
