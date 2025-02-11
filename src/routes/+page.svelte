@@ -1,4 +1,5 @@
 <script lang="ts">
+    export let data;
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
     import { articles, loadMoreArticles, loading, likedArticles, loadingMore, recommendations, articleBuffer } from '$lib/store/articles';
@@ -15,13 +16,45 @@
     import wiki from 'wikipedia';
     import { languageLoading, setLoading } from '$lib/store/loading';
     import LoadingSpinner from '$lib/components/LoadingSpinner.svelte';
-    import type { PageData } from './$types';
     import { fade } from 'svelte/transition';
     import { checkScrollPosition } from '$lib/store/articles';
-    
-    export let data: PageData;
+    import { fetchRandomArticle } from '$lib/api/wikipedia';
+    import { getBrowserLanguage } from '$lib/storage/utils';
+    import { error } from '@sveltejs/kit';
 
-    
+    const INITIAL_ARTICLES_COUNT = 6; 
+
+
+    async function loadInitialData() {
+        try {
+            const initialLanguage = getBrowserLanguage() as SupportedLanguage;
+            const articles: WikiArticle[] = [];
+            
+            for (let i = 0; i < INITIAL_ARTICLES_COUNT; i++) {
+                try {
+                    const article = await fetchRandomArticle(initialLanguage);
+                    if (article) {
+                        articles.push(article);
+                    }
+                } catch (err) {
+                    console.warn(`Failed to load article ${i + 1}:`, err);
+                }
+            }
+
+            if (articles.length === 0) {
+                throw error(500, 'Failed to load initial articles');
+            }
+
+            return {
+                initialLanguage,
+                initialArticles: articles
+            };
+        } catch (err) {
+            console.error('Error loading page:', err);
+            throw error(500, 'Failed to load page data');
+        }
+    }
+
     $: if ((data as any).initialLanguage && browser) {
         language.set((data as any).initialLanguage as SupportedLanguage);
     }
@@ -168,18 +201,25 @@
     }
 
     onMount(() => {
-        if (browser && (data as any).initialArticles?.length > 0) {
-            articles.set((data as any).initialArticles);
-        } else if ($articles.length === 0) {
-            loadMoreArticles(5);
-        }
-        
         if (browser) {
+            const initializeData = async () => {
+                if ((data as any).initialArticles?.length > 0) {
+                    articles.set((data as any).initialArticles);
+                } else if ($articles.length === 0) {
+                    const initialData = await loadInitialData();
+                    language.set(initialData.initialLanguage);
+                    articles.set(initialData.initialArticles);
+                }
+            };
+            
+            initializeData();
             checkOrientation();
             window.addEventListener('resize', checkOrientation);
+            
             if ($articles.length === 0) {
                 loadArticles();
             }
+            
             if (!window.recommendationsWorker) {
                 window.recommendationsWorker = new Worker(
                     new URL('$lib/workers/recommendations.ts', import.meta.url),
@@ -191,7 +231,6 @@
             window.addEventListener('keydown', handleKeydown);
         }
 
-        
         function updateViewportHeight() {
             viewportHeight = window.innerHeight;
             document.documentElement.style.setProperty('--vh', `${viewportHeight * 0.01}px`);
