@@ -32,6 +32,7 @@ export const language = createLanguageStore();
 /**
  * Sets the initial language for the application.
  */
-export function setInitialLanguage(lang: SupportedLanguage) {
+export async function setInitialLanguage(lang: SupportedLanguage) {
     language.set(lang);
+    await setStoredLanguage(lang);
 }

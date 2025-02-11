@@ -19,7 +19,7 @@
     import { fade } from 'svelte/transition';
     import { checkScrollPosition } from '$lib/store/articles';
     import { fetchRandomArticle } from '$lib/api/wikipedia';
-    import { getBrowserLanguage } from '$lib/storage/utils';
+    import { getBrowserLanguage, getStoredLanguage } from '$lib/storage/utils';
     import { error } from '@sveltejs/kit';
 
     const INITIAL_ARTICLES_COUNT = 6; 
@@ -27,7 +27,8 @@
 
     async function loadInitialData() {
         try {
-            const initialLanguage = getBrowserLanguage() as SupportedLanguage;
+            const storedLanguage = await getStoredLanguage();
+            const initialLanguage = storedLanguage || getBrowserLanguage() as SupportedLanguage;
             const articles: WikiArticle[] = [];
             
             for (let i = 0; i < INITIAL_ARTICLES_COUNT; i++) {
@@ -57,6 +58,12 @@
 
     $: if ((data as any).initialLanguage && browser) {
         language.set((data as any).initialLanguage as SupportedLanguage);
+    } else if (browser) {
+        getStoredLanguage().then(storedLang => {
+            if (storedLang) {
+                language.set(storedLang as SupportedLanguage);
+            }
+        });
     }
 
     const languages: Record<SupportedLanguage, string> = {
