@@ -7,27 +7,53 @@
 
 import { writable } from 'svelte/store';
 import type { SupportedLanguage } from '../types';
-import { getStoredLanguage, setStoredLanguage } from '../storage/utils';
+import { getBrowserLanguage, getStoredLanguage, setStoredLanguage } from '../storage/utils';
+import { browser } from '$app/environment';
+
+const DEFAULT_LANGUAGE: SupportedLanguage = 'en';
 
 /**
  * Creates a language store with persistence.
  */
 function createLanguageStore() {
-    const { subscribe, set, update } = writable<SupportedLanguage>('en');
+    const { subscribe, set, update } = writable<SupportedLanguage>(DEFAULT_LANGUAGE);
+    
+    async function initializeLanguage() {
+        if (browser) {
+            const storedLang = await getStoredLanguage();
+            if (storedLang) {
+                set(storedLang);
+                return storedLang;
+            }
+            const browserLang = getBrowserLanguage() as SupportedLanguage;
+            if (browserLang) {
+                set(browserLang);
+                await setStoredLanguage(browserLang);
+                return browserLang;
+            }
+        }
+        return DEFAULT_LANGUAGE;
+    }
     
     return {
         subscribe,
-        set: (lang: SupportedLanguage) => {
+        set: async (lang: SupportedLanguage) => {
             set(lang);
-            if (typeof window !== 'undefined') {
-                setStoredLanguage(lang);
+            if (browser) {
+                await setStoredLanguage(lang);
             }
         },
-        update
+        update,
+        initialize: initializeLanguage
     };
 }
 
 export const language = createLanguageStore();
+
+// Initialize language immediately
+if (browser) {
+    language.initialize();
+}
 
 /**
  * Sets the initial language for the application.
