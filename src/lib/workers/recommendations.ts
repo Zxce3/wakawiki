@@ -16,8 +16,8 @@ import type {
 import {
     fetchArticleMetadata,
     fetchRandomArticle,
-    searchByCategory, 
-    getRelatedCategories 
+    searchByCategory,
+    getRelatedCategories
 } from '../api/wikipedia';
 import type { SupportedLanguage } from '../types';
 
@@ -57,7 +57,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // Cache duration for recommendations
 
 console.log('Web Worker: Initializing recommendations worker');
 
-type WorkerMessage = 
+type WorkerMessage =
     | { type: 'initialize'; categories: string[]; language: SupportedLanguage }
     | LocalUserInteraction[];
 
@@ -81,7 +81,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
             console.log(`Processing recommendations for language: ${language}`);
             const recommendations = await generateRecommendations(interactions);
             self.postMessage(recommendations);
-        } 
+        }
         else if (event.data.type === 'initialize') {
             const { categories, language } = event.data;
             currentWorkerLanguage = language;
@@ -148,9 +148,9 @@ function deduplicateInteractions(interactions: LocalUserInteraction[]): LocalUse
 async function generateRecommendations(interactions: LocalUserInteraction[]): Promise<ArticleRecommendation[]> {
     try {
         const language = interactions[0].language;
-        
+
         const recommendations = await generateRecommendationsFromInteractions(interactions);
-        
+
         // Sort and limit recommendations
         return recommendations
             .sort((a, b) => b.score - a.score)
@@ -162,13 +162,13 @@ async function generateRecommendations(interactions: LocalUserInteraction[]): Pr
 }
 
 const weights: FeedbackWeights = {
-    category: 0.4,    
+    category: 0.4,
     topic: 0.2,
     readingTime: 0.1,
     language: 0.2,
     recency: 0.1,
     popularity: 0.1,
-    userFeedback: 0.5 
+    userFeedback: 0.5
 };
 
 /**
@@ -177,8 +177,8 @@ const weights: FeedbackWeights = {
 function getRelevantCategories(categories: string[]): string[] {
     return categories
         .map(cleanCategory)
-        .filter(cat => 
-            cat && 
+        .filter(cat =>
+            cat &&
             !cat.toLowerCase().includes('wikidata') &&
             !cat.toLowerCase().includes('hidden')
         );
@@ -194,15 +194,15 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
     const processedArticles = new Set<string>();
 
     // Process top 5 interactions
-    for (const interaction of interactions.slice(0, 5)) { 
+    for (const interaction of interactions.slice(0, 5)) {
         try {
             const page = await wiki.page(interaction.articleId);
             const categories = await page.categories();
-            
+
             const relevantCategories = categories
                 .map(cleanCategory)
-                .filter(cat => 
-                    cat && 
+                .filter(cat =>
+                    cat &&
                     !cat.toLowerCase().includes('wikidata') &&
                     !cat.toLowerCase().includes('hidden')
                 );
@@ -215,15 +215,15 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
 
                 try {
                     const categoryArticles = await searchByCategory(category, interaction.language, 2);
-                    
+
                     for (const article of categoryArticles) {
                         if (processedArticles.has(article.id)) continue;
                         if (article.id === interaction.articleId) continue; // Skip the same article
-                        
+
                         if (!isValidArticle(article)) continue;
-                        
+
                         processedArticles.add(article.id);
-                        
+
                         recommendations.add({
                             articleId: article.id,
                             score: interaction.type === 'like' ? 0.9 : 0.7,
@@ -235,7 +235,7 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
                                 readingTime: estimateReadingTime(article.content || ''),
                                 popularity: 0.7
                             },
-                            reason: interaction.type === 'like' 
+                            reason: interaction.type === 'like'
                                 ? `Based on article you liked: ${category}`
                                 : `Similar to what you're reading: ${category}`
                         });
@@ -277,11 +277,11 @@ function calculateRecommendationScore(
     let score = 0;
 
     if (!summary?.extract) return 0;
-    
+
     score += Math.min(1, summary.extract.length / 1000) * 0.3;
     score += summary.thumbnail ? 0.2 : 0;
-    
-    const categoryOverlap = sourceCategories.length > 0 ? 
+
+    const categoryOverlap = sourceCategories.length > 0 ?
         calculateCategoryOverlap(sourceCategories, targetCategories) : 0.5;
     score += categoryOverlap * 0.5;
 
@@ -419,10 +419,10 @@ function calculateArticlePopularity(result: any): number | undefined {
 async function getFallbackRecommendations(language: SupportedLanguage): Promise<ArticleRecommendation[]> {
     try {
         const articles = await fetchRandomArticlesWithImages(language, 5, new Set());
-        
+
         return articles.map(article => ({
             articleId: article.id,
-            score: 0.5, 
+            score: 0.5,
             metadata: {
                 title: article.title,
                 categories: article.categories || [],
@@ -444,11 +444,11 @@ async function getFallbackRecommendations(language: SupportedLanguage): Promise<
  */
 function estimateReadingTime(extract: string): number | undefined {
     if (!extract) return undefined;
-    
+
     const WORDS_PER_MINUTE = 200;
     const wordCount = extract.trim().split(/\s+/).length;
     const minutes = Math.round((wordCount / WORDS_PER_MINUTE) * 2) / 2;
-    
+
     return Math.max(0.5, minutes);
 }
 
@@ -464,8 +464,8 @@ function calculateCategoryOverlap(sourceCategories: string[], targetCategories: 
     const targetCats = targetCategories.map(c => c.toLowerCase());
 
     const exactMatches = sourceCats.filter(cat => targetCats.includes(cat)).length;
-    const partialMatches = sourceCats.filter(sCat => 
-        targetCats.some(tCat => 
+    const partialMatches = sourceCats.filter(sCat =>
+        targetCats.some(tCat =>
             tCat.includes(sCat) || sCat.includes(tCat)
         )
     ).length;
@@ -481,10 +481,10 @@ function calculateCategoryOverlap(sourceCategories: string[], targetCategories: 
  */
 async function searchByCategories(categories: string[], language: SupportedLanguage, limit = 5): Promise<WikiArticle[]> {
     const articles = new Map<string, WikiArticle>();
-    
+
     for (const category of categories) {
         if (articles.size >= limit) break;
-        
+
         try {
             const cleanedCategory = cleanCategory(category);
             if (!cleanedCategory) continue;
@@ -499,7 +499,7 @@ async function searchByCategories(categories: string[], language: SupportedLangu
             console.warn(`Error searching category ${category}:`, error);
         }
     }
-    
+
     return Array.from(articles.values()).slice(0, limit);
 }
 
@@ -523,7 +523,7 @@ function isArticleValid(article: WikiArticle): boolean {
  */
 function cleanCategory(category: string): string {
     if (!category) return '';
-    
+
     return category
         .replace(/^(Category:|Kategori:)/, '')
         .replace(/\s*\([^)]*\)/g, '')
@@ -550,14 +550,14 @@ async function generateCategoryBasedRecommendations(
 
         try {
             const categoryArticles = await searchByCategory(category, language, 3);
-            
+
             for (const article of categoryArticles) {
                 if (processedArticles.has(article.id)) continue;
                 processedArticles.add(article.id);
-                
+
                 recommendations.add({
                     articleId: article.id,
-                    score: 0.9, 
+                    score: 0.9,
                     metadata: {
                         title: article.title,
                         categories: [category],

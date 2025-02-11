@@ -1,19 +1,31 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import type { WikiArticle, FeedbackType, ArticleRecommendation, SupportedLanguage } from '../types';
-    import { recordInteraction, handleLike, likedArticles } from '../store/articles';
-    import FeedbackBar from './FeedbackBar.svelte';
-    import LoadingSpinner from './LoadingSpinner.svelte';
-    import { fetchArticleImages } from '../api/wikipedia';
-    import { fade } from 'svelte/transition';
+    import { onMount } from "svelte";
+    import type {
+        WikiArticle,
+        FeedbackType,
+        ArticleRecommendation,
+        SupportedLanguage,
+    } from "../types";
+    import {
+        recordInteraction,
+        handleLike,
+        likedArticles,
+    } from "../store/articles";
+    import FeedbackBar from "./FeedbackBar.svelte";
+    import LoadingSpinner from "./LoadingSpinner.svelte";
+    import { fetchArticleImages } from "../api/wikipedia";
+    import { fade } from "svelte/transition";
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
     export let isRecommended = false;
-    export let showNavigationButtons = true; 
-    export let onNavigate: ((direction: 'up' | 'down') => void) | undefined = undefined;
+    export let showNavigationButtons = true;
+    export let onNavigate: ((direction: "up" | "down") => void) | undefined =
+        undefined;
     export let recommendations: ArticleRecommendation[] = [];
-    export const onRecommendationClick: ((rec: ArticleRecommendation) => void) | undefined = undefined;
+    export const onRecommendationClick:
+        | ((rec: ArticleRecommendation) => void)
+        | undefined = undefined;
     export let recommendationsLoading = false;
     export let index: number;
     export let currentVisibleIndex: number;
@@ -55,7 +67,7 @@
 
     async function loadContent() {
         if (!mounted) return;
-        
+
         loadTimeout = setTimeout(() => {
             if (!imageLoaded) {
                 loadingError = true;
@@ -66,16 +78,16 @@
         if (shouldLoadImage && article.imageUrl) {
             loadImage();
         }
-        
+
         if (active && !hasRecordedView) {
             hasRecordedView = true;
-            recordInteraction(article, 'view');
+            recordInteraction(article, "view");
         }
     }
 
     const loadImage = async () => {
         if (!article.imageUrl || imageLoaded || !mounted) return;
-        
+
         const img = new Image();
         const loadPromise = new Promise((resolve, reject) => {
             img.onload = resolve;
@@ -87,9 +99,9 @@
         try {
             await Promise.race([
                 loadPromise,
-                new Promise((_, reject) => 
-                    setTimeout(() => reject('timeout'), LOAD_TIMEOUT)
-                )
+                new Promise((_, reject) =>
+                    setTimeout(() => reject("timeout"), LOAD_TIMEOUT),
+                ),
             ]);
             if (mounted) {
                 imageLoaded = true;
@@ -105,25 +117,28 @@
 
     async function attemptImageLoad() {
         if (!article.imageUrl || imageLoaded || !mounted) return;
-        
+
         imageAttempts++;
         imageLoading = true;
 
         try {
             const img = new Image();
             await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => reject('timeout'), IMAGE_LOAD_TIMEOUT);
-                
+                const timeout = setTimeout(
+                    () => reject("timeout"),
+                    IMAGE_LOAD_TIMEOUT,
+                );
+
                 img.onload = () => {
                     clearTimeout(timeout);
                     resolve(img);
                 };
-                
+
                 img.onerror = () => {
                     clearTimeout(timeout);
-                    reject('error');
+                    reject("error");
                 };
-                
+
                 img.src = article.imageUrl!;
             });
 
@@ -136,7 +151,10 @@
         } catch (error) {
             if (mounted) {
                 // Try thumbnail as fallback
-                if (article.thumbnail && article.imageUrl !== article.thumbnail) {
+                if (
+                    article.thumbnail &&
+                    article.imageUrl !== article.thumbnail
+                ) {
                     article.imageUrl = article.thumbnail;
                     if (imageAttempts < MAX_IMAGE_ATTEMPTS) {
                         await attemptImageLoad();
@@ -165,9 +183,9 @@
             const img = imageElement;
             const container = containerElement;
             const imgAspect = img.naturalWidth / img.naturalHeight;
-            const containerAspect = container.clientWidth / container.clientHeight;
+            const containerAspect =
+                container.clientWidth / container.clientHeight;
 
-            
             img.style.cssText = `
                 opacity: 1;
                 position: absolute;
@@ -176,21 +194,18 @@
                 max-height: none;
             `;
 
-            
             if (imgAspect > containerAspect) {
-                img.style.width = '100%';
-                img.style.height = 'auto';
-                img.style.top = '50%';
-                img.style.left = '0';
-                img.style.transform = 'translateY(-50%)';
-            } 
-            
-            else {
-                img.style.height = '100%';
-                img.style.width = 'auto';
-                img.style.left = '50%';
-                img.style.top = '0';
-                img.style.transform = 'translateX(-50%)';
+                img.style.width = "100%";
+                img.style.height = "auto";
+                img.style.top = "50%";
+                img.style.left = "0";
+                img.style.transform = "translateY(-50%)";
+            } else {
+                img.style.height = "100%";
+                img.style.width = "auto";
+                img.style.left = "50%";
+                img.style.top = "0";
+                img.style.transform = "translateX(-50%)";
             }
         });
     }
@@ -218,10 +233,12 @@
         showFullCaption = !showFullCaption;
     }
 
-    function handleFeedback(event: CustomEvent<{ type: FeedbackType; article: WikiArticle }>) {
+    function handleFeedback(
+        event: CustomEvent<{ type: FeedbackType; article: WikiArticle }>,
+    ) {
         const { type, article } = event.detail;
-        if (type === 'more_like_this') {
-            recordInteraction(article, 'like');
+        if (type === "more_like_this") {
+            recordInteraction(article, "like");
         }
     }
 </script>
@@ -229,13 +246,19 @@
 <div class="relative w-full h-full bg-black" bind:this={containerElement}>
     <!-- Immediate loading feedback -->
     {#if !contentLoaded}
-        <div class="absolute inset-0 bg-black/80 flex items-center justify-center">
-            <div class="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
+        <div
+            class="absolute inset-0 bg-black/80 flex items-center justify-center"
+        >
+            <div
+                class="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"
+            ></div>
         </div>
     {/if}
 
     <!-- Base background -->
-    <div class="absolute inset-0 bg-gradient-to-b from-neutral-900/80 to-black/60"></div>
+    <div
+        class="absolute inset-0 bg-gradient-to-b from-neutral-900/80 to-black/60"
+    ></div>
 
     <!-- Optimized image loading -->
     <div class="absolute inset-0">
@@ -243,9 +266,11 @@
             <div class="relative w-full h-full">
                 <!-- Loading placeholder -->
                 {#if imageLoading}
-                    <div class="absolute inset-0 bg-neutral-900 animate-pulse"></div>
+                    <div
+                        class="absolute inset-0 bg-neutral-900 animate-pulse"
+                    ></div>
                 {/if}
-                
+
                 <!-- Main image -->
                 <img
                     src={article.imageUrl}
@@ -261,11 +286,15 @@
                 />
 
                 <!-- Gradient overlays -->
-                <div class="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70 pointer-events-none"></div>
+                <div
+                    class="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70 pointer-events-none"
+                ></div>
             </div>
         {:else}
             <!-- Fallback gradient background -->
-            <div class="absolute inset-0 bg-gradient-to-b from-neutral-900 to-black"></div>
+            <div
+                class="absolute inset-0 bg-gradient-to-b from-neutral-900 to-black"
+            ></div>
         {/if}
     </div>
 
@@ -274,7 +303,7 @@
         <!-- Add recommendation label if article is recommended -->
         {#if isRecommended && score}
             <div class="mb-3">
-                <span 
+                <span
                     class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium bg-white/10 backdrop-blur-sm text-white transition-all hover:bg-white/15"
                     in:fade={{ duration: 200 }}
                 >
@@ -293,28 +322,36 @@
         {/if}
 
         <div class="relative rounded-xl bg-black/30">
-            <div class="relative max-w-[85%] @lg:max-w-[75%] space-y-3 @md:space-y-4 p-4 @md:p-5">
-                <h2 class="text-lg @sm:text-xl @md:text-2xl @lg:text-3xl font-bold text-white/95 drop-shadow-sm">
+            <div
+                class="relative max-w-[85%] @lg:max-w-[75%] space-y-3 @md:space-y-4 p-4 @md:p-5"
+            >
+                <h2
+                    class="text-lg @sm:text-xl @md:text-2xl @lg:text-3xl font-bold text-white/95 drop-shadow-sm"
+                >
                     {article.title}
                 </h2>
                 <div class="space-y-2">
-                    <div class="relative max-h-[150px] overflow-y-auto custom-scrollbar" class:max-h-none={!showFullCaption}>
+                    <div
+                        class="relative max-h-[150px] overflow-y-auto custom-scrollbar"
+                        class:max-h-none={!showFullCaption}
+                    >
                         <button
                             type="button"
                             class="text-sm @md:text-base text-white/90 leading-relaxed cursor-pointer drop-shadow-sm pr-2 text-left w-full"
                             class:line-clamp-2={!showFullCaption}
                             on:click={toggleCaption}
-                            on:keydown={(e) => e.key === 'Enter' && toggleCaption()}
+                            on:keydown={(e) =>
+                                e.key === "Enter" && toggleCaption()}
                         >
                             {article.excerpt}
                         </button>
                     </div>
-                    {#if (article.excerpt ?? '').length > 200}
+                    {#if (article.excerpt ?? "").length > 200}
                         <button
                             class="text-xs @md:text-sm text-white/75 hover:text-white transition-colors font-medium mt-2"
                             on:click={toggleCaption}
                         >
-                            {showFullCaption ? 'Show less ↑' : 'Read more ↓'}
+                            {showFullCaption ? "Show less ↑" : "Read more ↓"}
                         </button>
                     {/if}
                 </div>
@@ -322,27 +359,37 @@
         </div>
     </div>
 
-    <div class="absolute right-4 @md:right-6 @lg:right-8 bottom-6 @md:bottom-8 flex flex-col items-center gap-4 z-40">
+    <div
+        class="absolute right-4 @md:right-6 @lg:right-8 bottom-6 @md:bottom-8 flex flex-col items-center gap-4 z-40"
+    >
         <button
             class="flex flex-col items-center group"
             class:text-red-500={isLiked}
             class:text-white={!isLiked}
             on:click={handleLikeClick}
-            aria-label={isLiked ? 'Unlike' : 'Like'}
+            aria-label={isLiked ? "Unlike" : "Like"}
         >
-            <div class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105">
-                <svg class="w-6 h-6 @md:w-8 @md:h-8" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
+            <div
+                class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
+            >
+                <svg
+                    class="w-6 h-6 @md:w-8 @md:h-8"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
                              2 5.42 4.42 3 7.5 3
                              c1.74 0 3.41.81 4.5 2.09
                              C13.09 3.81 14.76 3
                              16.5 3 19.58 3 22 5.42
                              22 8.5c0 3.78-3.4 6.86-8.55 11.54
-                             L12 21.35z"/>
+                             L12 21.35z"
+                    />
                 </svg>
             </div>
             <span class="text-xs @md:text-sm mt-1 font-medium text-white/90">
-                {isLiked ? 'Liked' : 'Like'}
+                {isLiked ? "Liked" : "Like"}
             </span>
         </button>
 
@@ -353,52 +400,75 @@
             class="flex flex-col items-center group"
             aria-label="Read article"
         >
-            <div class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105">
-                <svg class="w-6 h-6 @md:w-8 @md:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path 
-                        stroke-linecap="round" 
-                        stroke-linejoin="round" 
-                        stroke-width="2" 
+            <div
+                class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
+            >
+                <svg
+                    class="w-6 h-6 @md:w-8 @md:h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
                         d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10
-                           a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                           a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                 </svg>
             </div>
-            <span class="text-xs @md:text-sm mt-1 font-medium text-white/90">Read</span>
+            <span class="text-xs @md:text-sm mt-1 font-medium text-white/90"
+                >Read</span
+            >
         </a>
     </div>
 
     {#if showNavigationButtons && onNavigate}
-    <div class="absolute right-4 top-1/2 -translate-y-1/2 z-[50] hidden md:flex flex-col gap-4"> <!-- Decreased z-index from 102 to 50 -->
-        <button
-            class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
-            on:click={() => onNavigate('up')}
-            aria-label="Navigate up"
+        <div
+            class="absolute right-4 top-1/2 -translate-y-1/2 z-[50] hidden md:flex flex-col gap-4"
         >
-            <svg class="w-6 h-6 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path 
-                    stroke-linecap="round"
-                    stroke-linejoin="round" 
-                    stroke-width="2" 
-                    d="M5 15l7-7 7 7" 
-                />
-            </svg>
-        </button>
-        <button
-            class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
-            on:click={() => onNavigate('down')}
-            aria-label="Navigate down"
-        >
-            <!-- Fixed viewBox attribute here -->
-            <svg class="w-6 h-6 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path 
-                    stroke-linecap="round" 
-                    stroke-linejoin="round" 
-                    stroke-width="2" 
-                    d="M19 9l-7 7-7-7"
-                />
-            </svg>
-        </button>
-    </div>
+            <!-- Decreased z-index from 102 to 50 -->
+            <button
+                class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
+                on:click={() => onNavigate("up")}
+                aria-label="Navigate up"
+            >
+                <svg
+                    class="w-6 h-6 text-white group-hover:scale-110 transition-transform"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 15l7-7 7 7"
+                    />
+                </svg>
+            </button>
+            <button
+                class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
+                on:click={() => onNavigate("down")}
+                aria-label="Navigate down"
+            >
+                <!-- Fixed viewBox attribute here -->
+                <svg
+                    class="w-6 h-6 text-white group-hover:scale-110 transition-transform"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 9l-7 7-7-7"
+                    />
+                </svg>
+            </button>
+        </div>
     {/if}
 
     {#if active && isRecommended && score && score > 0.5}
@@ -406,14 +476,19 @@
             {article}
             {score}
             onFeedback={(type) =>
-                handleFeedback(new CustomEvent('feedback', { detail: { type, article } }))
-            }
+                handleFeedback(
+                    new CustomEvent("feedback", { detail: { type, article } }),
+                )}
         />
     {/if}
 
     {#if recommendationsLoading}
-        <div class="absolute bottom-4 right-4 z-50 bg-black/40 backdrop-blur rounded-full p-3">
-            <div class="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+        <div
+            class="absolute bottom-4 right-4 z-50 bg-black/40 backdrop-blur rounded-full p-3"
+        >
+            <div
+                class="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"
+            ></div>
         </div>
     {/if}
 </div>
