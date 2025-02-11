@@ -34,50 +34,128 @@
     let contentLoaded = false;
     let loadingError = false;
 
-    
-    const loadImage = async () => {
-        if (!article.imageUrl || imageLoaded) return;
+    const LOAD_TIMEOUT = 5000; // 5 seconds timeout for loading
+    let loadTimeout: NodeJS.Timeout;
+    let mounted = false;
+
+    const IMAGE_LOAD_TIMEOUT = 3000;
+    let imageAttempts = 0;
+    const MAX_IMAGE_ATTEMPTS = 2;
+
+    onMount(() => {
+        mounted = true;
+        if (active) {
+            loadContent();
+        }
+        return () => {
+            clearTimeout(loadTimeout);
+            mounted = false;
+        };
+    });
+
+    async function loadContent() {
+        if (!mounted) return;
         
+        loadTimeout = setTimeout(() => {
+            if (!imageLoaded) {
+                loadingError = true;
+                imageLoading = false;
+            }
+        }, LOAD_TIMEOUT);
+
+        if (shouldLoadImage && article.imageUrl) {
+            loadImage();
+        }
+        
+        if (active && !hasRecordedView) {
+            hasRecordedView = true;
+            recordInteraction(article, 'view');
+        }
+    }
+
+    const loadImage = async () => {
+        if (!article.imageUrl || imageLoaded || !mounted) return;
+        
+        const img = new Image();
+        const loadPromise = new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+        });
+
+        img.src = article.imageUrl;
+
         try {
-            const img = new Image();
-            img.src = article.imageUrl;
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-            });
-            imageLoaded = true;
+            await Promise.race([
+                loadPromise,
+                new Promise((_, reject) => 
+                    setTimeout(() => reject('timeout'), LOAD_TIMEOUT)
+                )
+            ]);
+            if (mounted) {
+                imageLoaded = true;
+                imageLoading = false;
+            }
         } catch (error) {
-            loadingError = true;
-            console.error('Error loading image:', error);
+            if (mounted) {
+                loadingError = true;
+                imageLoading = false;
+            }
         }
     };
 
-    
-    $: if (active && !contentLoaded) {
-        loadImage();
+    async function attemptImageLoad() {
+        if (!article.imageUrl || imageLoaded || !mounted) return;
+        
+        imageAttempts++;
+        imageLoading = true;
+
+        try {
+            const img = new Image();
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject('timeout'), IMAGE_LOAD_TIMEOUT);
+                
+                img.onload = () => {
+                    clearTimeout(timeout);
+                    resolve(img);
+                };
+                
+                img.onerror = () => {
+                    clearTimeout(timeout);
+                    reject('error');
+                };
+                
+                img.src = article.imageUrl!;
+            });
+
+            if (mounted) {
+                imageLoaded = true;
+                imageLoading = false;
+                imageError = false;
+                requestAnimationFrame(() => updateImageLayout());
+            }
+        } catch (error) {
+            if (mounted) {
+                // Try thumbnail as fallback
+                if (article.thumbnail && article.imageUrl !== article.thumbnail) {
+                    article.imageUrl = article.thumbnail;
+                    if (imageAttempts < MAX_IMAGE_ATTEMPTS) {
+                        await attemptImageLoad();
+                        return;
+                    }
+                }
+                imageError = true;
+                imageLoading = false;
+            }
+        }
+    }
+
+    $: if (isVisible && !contentLoaded && mounted) {
+        loadContent();
         contentLoaded = true;
     }
 
-    $: if (isVisible && article.imagePending && !imagesFetched) {
-        imagesFetched = true;
-        fetchArticleImages(article.id, article.language as SupportedLanguage)
-            .then(images => {
-                article.imageUrl = images.imageUrl;
-                article.thumbnail = images.thumbnail;
-                article.imagePending = false;
-            })
-            .catch(() => {
-                imageError = true;
-                article.imagePending = false;
-            })
-            .finally(() => {
-                imageLoading = false;
-            });
-    }
-
-    $: if (active && !hasRecordedView) {
-        hasRecordedView = true;
-        recordInteraction(article, 'view');
+    $: if (isVisible && !imageLoaded && !imageError) {
+        attemptImageLoad();
     }
 
     function updateImageLayout() {
@@ -129,24 +207,6 @@
         imageLoading = false;
     }
 
-    onMount(() => {
-        let resizeObserver: ResizeObserver | undefined;
-        if (typeof ResizeObserver !== 'undefined') {
-            resizeObserver = new ResizeObserver(() => {
-                if (imageElement && !imageLoading && !imageError) {
-                    updateImageLayout();
-                }
-            });
-            if (containerElement) {
-                resizeObserver.observe(containerElement);
-            }
-        }
-
-        return () => {
-            resizeObserver?.disconnect();
-        };
-    });
-
     function handleLikeClick() {
         handleLike(article).then(() => {
             isLiked = $likedArticles.has(article.id);
@@ -167,9 +227,9 @@
 </script>
 
 <div class="relative w-full h-full bg-black" bind:this={containerElement}>
-    <!-- Loading state -->
-    {#if !imageLoaded && !loadingError}
-        <div class="absolute inset-0 flex items-center justify-center bg-black/50">
+    <!-- Immediate loading feedback -->
+    {#if !contentLoaded}
+        <div class="absolute inset-0 bg-black/80 flex items-center justify-center">
             <div class="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
         </div>
     {/if}
@@ -177,40 +237,34 @@
     <!-- Base background -->
     <div class="absolute inset-0 bg-gradient-to-b from-neutral-900/80 to-black/60"></div>
 
-    <!-- Image container with optimized loading -->
+    <!-- Optimized image loading -->
     <div class="absolute inset-0">
-        {#if article.imagePending}
-            <div class="absolute inset-0 bg-gradient-to-b from-neutral-900 to-black"></div>
-        {:else if article.imageUrl && shouldLoadImage}
+        {#if article.imageUrl && !imageError}
             <div class="relative w-full h-full">
-                <!-- Loading state -->
+                <!-- Loading placeholder -->
                 {#if imageLoading}
-                    <div class="absolute inset-0 flex items-center justify-center z-50">
-                        <LoadingSpinner fullscreen={false} size="sm" message="Loading image" />
-                    </div>
+                    <div class="absolute inset-0 bg-neutral-900 animate-pulse"></div>
                 {/if}
                 
-                <!-- Image with background handling -->
-                <div class="absolute inset-0 bg-gradient-to-b from-neutral-900/40 to-black/30 opacity-50"></div>
+                <!-- Main image -->
                 <img
                     src={article.imageUrl}
                     alt={article.title}
+                    class="w-full h-full object-cover transition-opacity duration-300"
+                    class:opacity-0={imageLoading || !imageLoaded}
+                    class:opacity-100={imageLoaded && !imageLoading}
+                    loading={isVisible ? "eager" : "lazy"}
+                    decoding="async"
+                    fetchpriority={isVisible ? "high" : "low"}
                     on:load={handleImageLoad}
                     on:error={handleImageError}
-                    loading={isVisible ? "eager" : "lazy"}
-                    fetchpriority={isVisible ? "high" : "low"}
-                    class="object-cover w-full h-full"
-                    class:opacity-0={imageLoading}
-                    style="mix-blend-mode: overlay;"
                 />
 
-                <!-- Refined Gradient Overlays -->
-                <div class="absolute inset-0 pointer-events-none">
-                    <div class="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 via-black/30 to-transparent"></div>
-                    <div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
-                </div>
+                <!-- Gradient overlays -->
+                <div class="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70 pointer-events-none"></div>
             </div>
         {:else}
+            <!-- Fallback gradient background -->
             <div class="absolute inset-0 bg-gradient-to-b from-neutral-900 to-black"></div>
         {/if}
     </div>
