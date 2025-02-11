@@ -73,7 +73,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
             }
 
             const language = interactions[0].language;
-            console.log('Processing recommendations for language:', language);
+            console.log(`Processing recommendations for language: ${language}`);
             await wiki.setLang(language);
             const recommendations = await generateRecommendations(interactions);
             console.log('Generated recommendations:', recommendations);
