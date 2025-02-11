@@ -54,6 +54,9 @@
     let imageAttempts = 0;
     const MAX_IMAGE_ATTEMPTS = 2;
 
+    // Add new variable to track if image is SVG
+    let isSVG = false;
+
     onMount(() => {
         mounted = true;
         if (active) {
@@ -214,6 +217,9 @@
         imageElement = event.target as HTMLImageElement;
         imageLoading = false;
         imageError = false;
+        // Check if image is SVG based on URL or mime type
+        isSVG = article.imageUrl?.toLowerCase().endsWith('.svg') || 
+                imageElement.src.includes('data:image/svg+xml');
         updateImageLayout();
     }
 
@@ -257,7 +263,7 @@
 
     <!-- Base background -->
     <div
-        class="absolute inset-0 bg-gradient-to-b from-neutral-900/80 to-black/60"
+        class="absolute inset-0 bg-gradient-to-b from-neutral-800/80 to-neutral-900/60"
     ></div>
 
     <!-- Optimized image loading -->
@@ -266,16 +272,21 @@
             <div class="relative w-full h-full">
                 <!-- Loading placeholder -->
                 {#if imageLoading}
-                    <div
-                        class="absolute inset-0 bg-neutral-900 animate-pulse"
-                    ></div>
+                    <div class="absolute inset-0 bg-neutral-800 animate-pulse"></div>
+                {/if}
+
+                <!-- Background for transparent images -->
+                {#if isSVG}
+                    <div class="absolute inset-0 bg-gradient-to-b from-neutral-60 to-neutral-700"></div>
+                {:else}
+                    <div class="absolute inset-0 bg-gradient-to-b from-black-60 to-black-70"></div>
                 {/if}
 
                 <!-- Main image -->
                 <img
                     src={article.imageUrl}
                     alt={article.title}
-                    class="w-full h-full object-cover transition-opacity duration-300"
+                    class="w-full h-full object-contain transition-opacity duration-300"
                     class:opacity-0={imageLoading || !imageLoaded}
                     class:opacity-100={imageLoaded && !imageLoading}
                     loading={isVisible ? "eager" : "lazy"}
@@ -287,13 +298,13 @@
 
                 <!-- Gradient overlays -->
                 <div
-                    class="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70 pointer-events-none"
+                    class="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50 pointer-events-none"
                 ></div>
             </div>
         {:else}
             <!-- Fallback gradient background -->
             <div
-                class="absolute inset-0 bg-gradient-to-b from-neutral-900 to-black"
+                class="absolute inset-0 bg-gradient-to-b from-neutral-600 to-neutral-800"
             ></div>
         {/if}
     </div>
