@@ -18,16 +18,18 @@
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
+    "@vite-pwa/sveltekit": "^0.6.7",
     "autoprefixer": "^10.4.20",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.0.0",
-    "vite": "^6.0.0",
-    "vite-plugin-pwa": "^0.21.1"
+    "vite": "^6.0.0"
   },
   "dependencies": {
     "@types/node": "^22.13.1",
+    "@types/serviceworker": "^0.0.120",
+    "@vite-pwa/assets-generator": "^0.2.6",
     "url": "^0.11.4",
     "wikipedia": "^2.1.2",
     "workbox-core": "^7.3.0",
