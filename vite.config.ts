@@ -1,15 +1,13 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { fileURLToPath } from 'url';
-import { VitePWA } from 'vite-plugin-pwa';
+import { SvelteKitPWA } from '@vite-pwa/sveltekit'
 
 export default defineConfig({
     plugins: [
         sveltekit(),
-        VitePWA({
-            strategies: 'injectManifest',
-            srcDir: 'src/lib/workers',
-            filename: 'worker.ts',
+        SvelteKitPWA({
+            strategies: 'generateSW',
             registerType: 'autoUpdate',
             devOptions: {
                 enabled: true,
@@ -70,26 +68,69 @@ export default defineConfig({
                 ],
             },
             workbox: {
+                globDirectory: '.svelte-kit/output',
                 globPatterns: [
-                    '**/*.{js,css,html}',
-                    '_app/**/*',
-                    '*.{ico,png,svg,jpg,jpeg,gif,webp,avif,woff,woff2,ttf,otf}'
+                    '**/*.{html,js,css,png,jpg,gif,svg,webp,woff,woff2,ttf,eot,ico}',
                 ],
+                globIgnores: [
+                    '**/node_modules/**/*',
+                    'sw.js',
+                    'workbox-*.js'
+                ],
+                cleanupOutdatedCaches: true,
                 clientsClaim: true,
                 skipWaiting: true
+            },
+            kit: {
+                appDir: '_app',
+                includeVersionFile: true,
+                outDir: '.svelte-kit'
             }
-        })
+        }),
     ],
-    resolve: {
-        alias: {
-            '$workers': fileURLToPath(new URL('./src/lib/workers', import.meta.url))
-        }
+    define: {
+        'process.env.NODE_ENV': process.env.NODE_ENV === 'production' 
+            ? '"production"'
+            : '"development"'
     },
     server: {
-        host: true,
-        // allowedHosts: ['0838-182-4-100-96.ngrok-free.app'],
+        host: true
     },
     worker: {
         format: 'es',
+        plugins: () => [{
+            name: 'sveltekit-env',
+            resolveId(id) {
+                if (id === '$app/environment') {
+                    return '\0virtual:$app/environment';
+                }
+            },
+            load(id) {
+                if (id === '\0virtual:$app/environment') {
+                    return 'export const browser = true; export const dev = import.meta.env.DEV;';
+                }
+            }
+        }]
+    },
+    resolve: {
+        preserveSymlinks: true,
+        conditions: ['browser', 'module', 'default']
+    },
+    build: {
+        target: 'esnext',
+        modulePreload: {
+            polyfill: false
+        },
+        rollupOptions: {
+            external: [
+                'node:path',
+                'node:url',
+                'node:fs',
+                'node:module'
+            ]
+        }
+    },
+    ssr: {
+        noExternal: ['__sveltekit/**']
     }
 });

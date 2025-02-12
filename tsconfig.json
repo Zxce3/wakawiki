@@ -10,7 +10,13 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "bundler",
-		"lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"]
+		"lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"],
+		"types": [
+			"vite-plugin-pwa/svelte",
+			"vite-plugin-pwa/info",
+			"vite-plugin-pwa/client",
+			"@types/serviceworker"
+		]
 	}
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
