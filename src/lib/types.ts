@@ -1,4 +1,5 @@
 export interface WikiArticle {
+    [x: string]: any;
     imagePending: boolean;
     id: string;
     title: string;
