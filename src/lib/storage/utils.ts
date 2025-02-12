@@ -95,7 +95,6 @@ export async function storeInteraction(interaction: UserInteraction): Promise<vo
     const fifteenDaysAgo = Date.now() - (15 * 24 * 60 * 60 * 1000);
     const filteredInteractions = interactions
         .filter(i => i.timestamp > fifteenDaysAgo)
-        .slice(-49);
 
     filteredInteractions.push(interaction);
     setStorage(STORAGE_KEYS.INTERACTIONS, filteredInteractions);
@@ -153,25 +152,35 @@ export async function cleanupOldData(): Promise<void> {
 }
 
 /**
- * Stores a liked article in local storage.
+ * Stores a liked article in local storage with better error handling
  */
 export async function storeLikedArticle(article: WikiArticle): Promise<void> {
-    const likedArticle: LikedArticle = {
-        id: article.id,
-        timestamp: Date.now(),
-        article
-    };
+    if (!browser || !article?.id) return;
 
-    const likedArticles = getStorage<LikedArticle[]>(STORAGE_KEYS.LIKED_ARTICLES, []);
-    const existingIndex = likedArticles.findIndex(a => a.id === article.id);
+    try {
+        const likedArticle: LikedArticle = {
+            id: article.id,
+            timestamp: Date.now(),
+            article
+        };
 
-    if (existingIndex === -1) {
-        likedArticles.push(likedArticle);
-    } else {
-        likedArticles[existingIndex] = likedArticle;
+        const likedArticles = getStorage<LikedArticle[]>(STORAGE_KEYS.LIKED_ARTICLES, []);
+        const existingIndex = likedArticles.findIndex(a => a.id === article.id);
+
+        if (existingIndex === -1) {
+            likedArticles.push(likedArticle);
+        } else {
+            likedArticles[existingIndex] = likedArticle;
+        }
+
+        setStorage(STORAGE_KEYS.LIKED_ARTICLES, likedArticles);
+        
+        // Also store in liked-ids for faster lookups
+        const likedIds = new Set(likedArticles.map(a => a.id));
+        localStorage.setItem('wakawiki:liked-ids', JSON.stringify(Array.from(likedIds)));
+    } catch (error) {
+        console.error('Error storing liked article:', error);
     }
-
-    setStorage(STORAGE_KEYS.LIKED_ARTICLES, likedArticles);
 }
 
 /**
@@ -184,11 +193,93 @@ export async function removeLikedArticle(articleId: string): Promise<void> {
 }
 
 /**
- * Retrieves liked articles data from local storage.
+ * Migrates old format liked articles to new format
+ */
+function migrateOldLikedArticles(data: any): LikedArticle[] {
+    try {
+        // Check if it's the old format with _metadata wrapper
+        if (data?._metadata && Array.isArray(data.data)) {
+            return data.data.map((item: any) => ({
+                id: item.article.id,
+                timestamp: item.timestamp,
+                article: item.article
+            }));
+        }
+        
+        // If it's already an array, assume it's the new format
+        if (Array.isArray(data)) {
+            return data;
+        }
+
+        return [];
+    } catch (error) {
+        console.warn('Error migrating old liked articles:', error);
+        return [];
+    }
+}
+
+/**
+ * Retrieves liked articles data with validation and migration support
  */
 export async function getLikedArticlesData(): Promise<WikiArticle[]> {
-    const likedArticles = getStorage<LikedArticle[]>(STORAGE_KEYS.LIKED_ARTICLES, []);
-    return likedArticles.map(item => item.article);
+    if (!browser) return [];
+
+    try {
+        // Try to get from liked-ids first
+        const likedIdsStr = localStorage.getItem('wakawiki:liked-ids');
+        let likedIds = new Set<string>();
+
+        // Get full article data
+        const rawData = localStorage.getItem(STORAGE_KEYS.LIKED_ARTICLES);
+        let likedArticles: LikedArticle[] = [];
+
+        if (rawData) {
+            try {
+                const parsed = JSON.parse(rawData);
+                // Handle old format
+                likedArticles = migrateOldLikedArticles(parsed);
+                
+                // Update liked-ids from migrated data
+                likedIds = new Set(likedArticles.map(a => a.id));
+                
+                // Save migrated data in new format
+                setStorage(STORAGE_KEYS.LIKED_ARTICLES, likedArticles);
+                localStorage.setItem('wakawiki:liked-ids', JSON.stringify(Array.from(likedIds)));
+            } catch (error) {
+                console.error('Error parsing liked articles:', error);
+            }
+        } else if (likedIdsStr) {
+            // If we only have liked-ids but no articles data
+            likedIds = new Set(JSON.parse(likedIdsStr));
+        }
+
+        // Filter valid articles
+        const validArticles = likedArticles
+            .filter(item => likedIds.has(item.id) && isValidArticle(item.article))
+            .map(item => item.article);
+
+        return validArticles;
+    } catch (error) {
+        console.error('Error getting liked articles:', error);
+        return [];
+    }
+}
+
+/**
+ * Enhanced validation to handle old article format
+ */
+function isValidArticle(article: any): article is WikiArticle {
+    return article 
+        && typeof article === 'object'
+        && typeof article.id === 'string'
+        && typeof article.title === 'string'
+        && typeof article.url === 'string'
+        // Add backward compatibility for optional fields
+        && (typeof article.excerpt === 'string' || article.excerpt === undefined)
+        && (typeof article.imageUrl === 'string' || article.imageUrl === undefined)
+        && (typeof article.thumbnail === 'string' || article.thumbnail === undefined)
+        && (typeof article.language === 'string' || article.language === undefined)
+        && (typeof article.content === 'string' || article.content === undefined);
 }
 
 /**

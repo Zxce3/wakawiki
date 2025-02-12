@@ -8,6 +8,8 @@
         likedArticles,
         recommendations,
         articleBuffer,
+        type InteractionType,
+        recordInteraction,
     } from "$lib/store/articles";
     import { language } from "$lib/store/language";
     import ArticleCard from "$lib/components/ArticleCard.svelte";
@@ -304,6 +306,11 @@
             const visibleArticle = $articles[newIndex];
             if (visibleArticle) handleArticleView(visibleArticle);
         }
+
+        // Track interaction for visible article
+        if ($articles[currentIndex]) {
+            handleArticleInteraction($articles[currentIndex], 'view');
+        }
     }
 
     // Calculate item height on mount
@@ -373,8 +380,6 @@
         return (index - MIN_ARTICLES_BEFORE_FIRST_AD) % AD_INTERVAL === 0;
     }
 
-
-
     async function handleArticleSelect(article: WikiArticle) {
         if (!article?.title || !article?.id) {
             console.warn("Invalid article selected:", article);
@@ -414,6 +419,8 @@
         } finally {
             setLoading("article", false);
         }
+
+        handleArticleInteraction(article, 'click');
     }
 
     function isArticleVisible(index: number): boolean {
@@ -427,6 +434,23 @@
             }
         }
     });
+
+    function handleArticleInteraction(article: WikiArticle, action: InteractionType) {
+        const metadata = {
+            timeSpent: 0,
+            scrollDepth: 0,
+            viewportTime: 0,
+            readPercentage: 0
+        };
+
+        if (articlesContainer) {
+            const containerHeight = articlesContainer.scrollHeight;
+            const scrollDepth = (articlesContainer.scrollTop + window.innerHeight) / containerHeight;
+            metadata.scrollDepth = scrollDepth;
+        }
+
+        recordInteraction(article, action, metadata);
+    }
 </script>
 
 <!-- Always render SvelteSeo, passing null during loading -->

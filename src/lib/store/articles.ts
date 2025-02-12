@@ -46,6 +46,22 @@ export const recommendations = writable(new Map<string, number>());
 export const likedCategories = writable<Set<string>>(new Set());
 export const initializing = writable(true);
 
+// Initialize the store with persisted data
+if (browser) {
+    getLikedArticlesData().then(articles => {
+        const likedIds = new Set(articles.map(a => a.id));
+        likedArticles.set(likedIds);
+    });
+
+    // Subscribe to changes and persist them
+    likedArticles.subscribe(likes => {
+        if (browser) {
+            const likedIds = Array.from(likes);
+            localStorage.setItem('wakawiki:liked-ids', JSON.stringify(likedIds));
+        }
+    });
+}
+
 // Loading state configuration
 const loadingState = {
     isLoading: false,
@@ -142,55 +158,98 @@ export const allArticles = derived(
     ([$articles, $buffer]) => [...$articles, ...$buffer]
 );
 
-export type InteractionType = 'view' | 'like';
+export type InteractionType = 'view' | 'like' | 'dislike' | 'click' | 'read' | 'share' | 'bookmark';
+
+interface ArticleInteraction {
+    articleId: string;
+    type: InteractionType;
+    timestamp: number;
+    language: string;
+    metadata?: {
+        timeSpent?: number;
+        scrollDepth?: number;
+        viewportTime?: number;
+        readPercentage?: number;
+    };
+}
+
+const INTERACTION_DEBOUNCE = 1000; // 1 second
+const MIN_VIEW_TIME = 2000; // 2 seconds
+let lastInteractionTime: Record<string, number> = {};
 
 /**
- * Records an interaction with an article.
+ * Records an interaction with an article with debouncing and validation
  */
-export function recordInteraction(article: WikiArticle, type: InteractionType): void {
-    const interaction = {
+export function recordInteraction(
+    article: WikiArticle, 
+    type: InteractionType,
+    metadata?: ArticleInteraction['metadata']
+): void {
+    if (!article?.id) return;
+
+    const now = Date.now();
+    const lastTime = lastInteractionTime[`${article.id}-${type}`] || 0;
+
+    // Debounce interactions except for specific types
+    if (type !== 'like' && type !== 'dislike' && now - lastTime < INTERACTION_DEBOUNCE) {
+        return;
+    }
+
+    // Validate view interactions
+    if (type === 'view' && now - lastTime < MIN_VIEW_TIME) {
+        return;
+    }
+
+    const interaction: ArticleInteraction = {
         articleId: article.id,
         type,
-        timestamp: Date.now(),
-        language: article.language
+        timestamp: now,
+        language: article.language,
+        metadata
     };
 
+    // Update last interaction time
+    lastInteractionTime[`${article.id}-${type}`] = now;
+
+    // Send to web worker if available
     if (browser && window.recommendationsWorker) {
         window.recommendationsWorker.postMessage([interaction]);
     }
 
+    // Store interaction locally
     storeInteraction(interaction);
+
+    // Update recommendations immediately for certain interactions
+    if (['like', 'dislike', 'read'].includes(type)) {
+        updateRecommendations(article, type);
+    }
 }
 
-if (browser) {
-    getLikedArticlesData().then(articles => {
-        const likedIds = new Set(articles.map(a => a.id));
-        likedArticles.set(likedIds);
-    });
-}
+/**
+ * Updates article recommendations based on interaction
+ */
+function updateRecommendations(article: WikiArticle, type: InteractionType) {
+    if (!article.categories?.length) return;
 
-if (browser) {
-    getLikedArticlesData().then(articles => {
-        const categories = new Set<string>();
-        articles.forEach(article => {
-            article.categories?.forEach(cat => categories.add(cat));
+    recommendations.update(recs => {
+        const newRecs = new Map(recs);
+        
+        // Adjust scores based on interaction type
+        const multiplier = type === 'like' ? 1.5 : 
+                         type === 'dislike' ? 0.5 :
+                         type === 'read' ? 1.2 : 1;
+
+        article.categories?.forEach(category => {
+            // Update scores for articles with matching categories
+            for (const [articleId, score] of newRecs.entries()) {
+                const targetArticle = get(articles).find(a => a.id === articleId);
+                if (targetArticle?.categories?.includes(category)) {
+                    newRecs.set(articleId, score * multiplier);
+                }
+            }
         });
-        likedCategories.set(categories);
 
-        if (categories.size > 0 && window.recommendationsWorker) {
-            window.recommendationsWorker.postMessage({
-                type: 'initialize',
-                categories: Array.from(categories),
-                language: get(language)
-            });
-        }
-    });
-}
-
-if (browser) {
-    window.recommendationsWorker?.addEventListener('message', (event) => {
-        const newRecs: ArticleRecommendation[] = event.data;
-        recommendations.set(new Map(newRecs.map(rec => [rec.articleId, rec.score])));
+        return newRecs;
     });
 }
 
@@ -198,33 +257,45 @@ if (browser) {
  * Handles liking or unliking an article.
  */
 export async function handleLike(article: WikiArticle): Promise<void> {
-    likedArticles.update(likes => {
-        const newLikes = new Set(likes);
-        if (newLikes.has(article.id)) {
-            newLikes.delete(article.id);
-            removeLikedArticle(article.id);
+    if (!article?.id) {
+        console.error('Invalid article for like operation');
+        return;
+    }
 
-            if (article.categories) {
-                likedCategories.update(cats => {
-                    const newCats = new Set(cats);
-                    article.categories?.forEach(cat => newCats.delete(cat));
-                    return newCats;
-                });
+    try {
+        const wasLiked = get(likedArticles).has(article.id);
+        
+        likedArticles.update(likes => {
+            const newLikes = new Set(likes);
+            if (wasLiked) {
+                newLikes.delete(article.id);
+                removeLikedArticle(article.id).catch(console.error);
+                recordInteraction(article, 'dislike');
+            } else {
+                newLikes.add(article.id);
+                storeLikedArticle(article).catch(console.error);
+                recordInteraction(article, 'like');
             }
-        } else {
-            newLikes.add(article.id);
-            storeLikedArticle(article);
+            return newLikes;
+        });
 
-            if (article.categories) {
-                likedCategories.update(cats => {
-                    const newCats = new Set(cats);
-                    article.categories?.forEach(cat => newCats.add(cat));
-                    return newCats;
+        // Update categories
+        if (article.categories) {
+            likedCategories.update(cats => {
+                const newCats = new Set(cats);
+                article.categories?.forEach(cat => {
+                    if (wasLiked) {
+                        newCats.delete(cat);
+                    } else {
+                        newCats.add(cat);
+                    }
                 });
-            }
+                return newCats;
+            });
         }
-        return newLikes;
-    });
+    } catch (error) {
+        console.error('Error handling like:', error);
+    }
 }
 
 const BUFFER_THRESHOLD = 5;
