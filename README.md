@@ -1,18 +1,7 @@
 # WakaWiki
 
 <div align="center">
-  <svg width="120" height="120" viewBox="0 0 100 100">
-    <defs>
-      <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.2" />
-        <stop offset="50%" style="stop-color:#ffffff;stop-opacity:1" />
-        <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.2" />
-      </linearGradient>
-    </defs>
-    <circle cx="50" cy="50" r="45" fill="none" stroke="url(#logoGradient)" stroke-width="4"/>
-    <text x="50" y="65" text-anchor="middle" fill="white" style="font-size: 40px; font-weight: bold;">W</text>
-  </svg>
-
+  <img src="static/logo.svg" width="120" height="120" alt="WakaWiki Logo">
   <p>A modern wiki reader with AI-powered recommendations</p>
 </div>
 
