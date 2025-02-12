@@ -11,6 +11,7 @@ import { language } from './language';
 import { fetchRandomArticle } from '$lib/api/wikipedia';
 import { storeInteraction, storeLikedArticle, removeLikedArticle, getLikedArticlesData } from '$lib/storage/utils';
 import type { WikiArticle, SupportedLanguage, ArticleRecommendation } from '$lib/types';
+import { cacheService } from '$lib/services/cacheService';
 
 declare module '$lib/types' {
     interface WikiArticle {
@@ -23,8 +24,8 @@ import wiki from 'wikipedia';
 
 declare global {
     interface Window {
-        recommendationsWorker: Worker;
-        articleLoaderWorker: Worker;
+        recommendationsWorker?: Worker;
+        articleLoaderWorker?: Worker;
     }
 }
 
@@ -546,35 +547,83 @@ async function fetchQualityArticle(language: SupportedLanguage): Promise<WikiArt
 export async function loadMoreArticles(count = loadingState.batchSize) {
     if (loadingState.isLoading || get(loadingMore)) return;
 
-    const currentArticles = get(articles);
-    if (currentArticles.length >= 100) return; // Maximum limit
-
     loadingMore.set(true);
     loadingState.isLoading = true;
 
     try {
-        if (browser && articleLoaderWorker) {
-            // Clear any previous recommendations
-            recommendations.set(new Map());
-
+        if (!navigator.onLine) {
+            // Load from cache when offline
+            const cachedArticles = await loadFromCache(count);
+            if (cachedArticles.length > 0) {
+                articles.update(existing => {
+                    const uniqueArticles = cachedArticles.filter(
+                        article => !existing.some(e => e.id === article.id)
+                    );
+                    return [...existing, ...uniqueArticles];
+                });
+            }
+        } else if (browser && articleLoaderWorker) {
+            // Online loading logic
             articleLoaderWorker.postMessage({
                 type: 'load',
                 language: get(language),
                 count,
-                immediate: currentArticles.length === 0
+                immediate: get(articles).length === 0
             });
-
-            // Set a timeout to reset loading state
-            setTimeout(() => {
-                loadingMore.set(false);
-                loadingState.isLoading = false;
-            }, 5000);
         }
     } catch (error) {
         console.error('Error loading articles:', error);
+    } finally {
         loadingMore.set(false);
         loadingState.isLoading = false;
     }
+}
+
+/**
+ * Loads articles from cache.
+ */
+async function loadFromCache(count: number): Promise<WikiArticle[]> {
+    const currentLanguage = get(language);
+    const cachedArticles: WikiArticle[] = [];
+
+    try {
+        // Use cacheService to load articles
+        const cache = await caches.open(CACHE_NAMES.articles);
+        const keys = await cache.keys();
+        
+        for (const key of keys
+            .filter(key => key.url.includes(currentLanguage))
+            .slice(0, count)) {
+            const article = await cacheService.getFromCache(CACHE_NAMES.articles, key.url);
+            if (article && typeof article === 'object' && 'id' in article && 'title' in article && 
+                'language' in article && 'url' in article && 'imagePending' in article) {
+                cachedArticles.push(article as WikiArticle);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading from cache:', error);
+    }
+
+    return cachedArticles;
+}
+
+/**
+ * Cache article after loading
+ */
+async function cacheArticle(article: WikiArticle): Promise<void> {
+    try {
+        await cacheService.setArticle(article, article.language as SupportedLanguage);
+    } catch (error) {
+        console.warn('Failed to cache article:', error);
+    }
+}
+
+// Add CACHE_NAMES constant
+const CACHE_NAMES = {
+    articles: 'articles-cache-v1',
+    images: 'images-cache-v1',
+    api: 'api-cache-v1',
+    static: 'static-cache-v1'
 }
 
 // Handle worker messages
@@ -589,6 +638,10 @@ if (browser) {
                         const uniqueArticles = newArticles.filter(
                             newArticle => !existing.some(e => e.id === newArticle.id)
                         );
+                        // Cache new articles
+                        uniqueArticles.forEach(article => {
+                            cacheArticle(article);
+                        });
                         return [...existing, ...uniqueArticles];
                     });
                 }

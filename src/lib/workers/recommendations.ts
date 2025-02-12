@@ -17,7 +17,7 @@ import type {
 import {
     fetchArticleMetadata,
     fetchRandomArticle,
-    searchByCategory,
+    searchByCategory as searchByCategoryApi,
     getRelatedCategories
 } from '$lib/api/wikipedia';
 
@@ -192,20 +192,30 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
 
     const recommendations = new Set<ArticleRecommendation>();
     const processedArticles = new Set<string>();
+    let errorCount = 0;
 
     // Process top 5 interactions
     for (const interaction of interactions.slice(0, 5)) {
         try {
-            const page = await wiki.page(interaction.articleId);
-            const categories = await page.categories();
+            const page = await wiki.page(interaction.articleId).catch(async (error) => {
+                console.warn(`Failed to fetch page ${interaction.articleId}:`, error);
+                errorCount++;
+                return null;
+            });
 
-            const relevantCategories = categories
-                .map(cleanCategory)
-                .filter(cat =>
-                    cat &&
-                    !cat.toLowerCase().includes('wikidata') &&
-                    !cat.toLowerCase().includes('hidden')
-                );
+            if (!page) continue;
+
+            const categories = await page.categories().catch(error => {
+                console.warn(`Failed to fetch categories for ${interaction.articleId}:`, error);
+                return [];
+            });
+
+            const relevantCategories = getRelevantCategories(categories);
+            
+            if (relevantCategories.length === 0) {
+                console.log('No relevant categories found for:', interaction.articleId);
+                continue;
+            }
 
             console.log('Processing article:', interaction.articleId);
             console.log('Using categories:', relevantCategories);
@@ -214,11 +224,15 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
                 if (recommendations.size >= 10) break;
 
                 try {
-                    const categoryArticles = await searchByCategory(category, interaction.language, 2);
+                    const categoryArticles = await searchByCategoryApi(category, interaction.language, 2)
+                        .catch(error => {
+                            console.warn(`Failed to search category ${category}:`, error);
+                            return [];
+                        });
 
                     for (const article of categoryArticles) {
-                        if (processedArticles.has(article.id)) continue;
-                        if (article.id === interaction.articleId) continue; // Skip the same article
+                        if (!article || processedArticles.has(article.id)) continue;
+                        if (article.id === interaction.articleId) continue;
 
                         if (!isValidArticle(article)) continue;
 
@@ -242,17 +256,20 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
                     }
                 } catch (error) {
                     console.warn(`Error processing category ${category}:`, error);
+                    errorCount++;
                     continue;
                 }
             }
         } catch (error) {
             console.warn('Error processing article:', error);
+            errorCount++;
             continue;
         }
     }
 
-    // Fallback recommendations if not enough generated
-    if (recommendations.size < 3) {
+    // If we encountered too many errors or have too few recommendations, get fallback recommendations
+    if (errorCount > 2 || recommendations.size < 3) {
+        console.log('Using fallback recommendations due to errors or insufficient results');
         const fallbackRecs = await getFallbackRecommendations(interactions[0].language);
         for (const rec of fallbackRecs) {
             if (recommendations.size >= 10) break;
@@ -489,7 +506,7 @@ async function searchByCategories(categories: string[], language: SupportedLangu
             const cleanedCategory = cleanCategory(category);
             if (!cleanedCategory) continue;
 
-            const categoryArticles = await searchByCategory(cleanedCategory, language, Math.ceil(limit / 2));
+            const categoryArticles = await searchByCategoryApi(cleanedCategory, language, Math.ceil(limit / 2));
             for (const article of categoryArticles) {
                 if (!articles.has(article.id) && isArticleValid(article)) {
                     articles.set(article.id, article);
@@ -549,7 +566,7 @@ async function generateCategoryBasedRecommendations(
         if (recommendations.size >= 10) break;
 
         try {
-            const categoryArticles = await searchByCategory(category, language, 3);
+            const categoryArticles = await searchByCategoryApi(category, language, 3);
 
             for (const article of categoryArticles) {
                 if (processedArticles.has(article.id)) continue;
