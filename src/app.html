@@ -4,9 +4,28 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/logo.svg" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		
+		<!-- PWA primary color -->
+		<meta name="theme-color" content="#ffffff" />
+		<meta name="background-color" content="#ffffff" />
+		
+		<!-- PWA -->
+		<meta name="application-name" content="WakaWiki" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+		<meta name="apple-mobile-web-app-title" content="WakaWiki" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		
+		<!-- Apple Touch Icons -->
+		<link rel="apple-touch-icon" href="%sveltekit.assets%/logo-192.png" />
+		<link rel="apple-touch-startup-image" href="%sveltekit.assets%/logo-512.png" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<!-- For testing the protocol handler -->
+		<a href="web+wiki://Python_(programming_language)" style="display: none">Test Protocol Handler</a>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>
