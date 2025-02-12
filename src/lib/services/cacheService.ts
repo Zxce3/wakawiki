@@ -5,6 +5,7 @@
  * categories, summaries, and images. It helps improve performance by reducing redundant API calls.
  */
 
+import { browser } from '$app/environment';
 import type { WikiArticle, SupportedLanguage } from '$lib/types';
 
 type CacheEntry<T> = {
@@ -168,6 +169,44 @@ class CacheService {
                 }
             }
         });
+    }
+
+    /**
+     * Initializes cache with service worker
+     */
+    async initialize() {
+        if (!browser) return;
+
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            if (registration.active) {
+                // Clear caches when language changes to avoid stale data
+                registration.active.postMessage({
+                    type: 'CLEAR_CACHE',
+                    language: this.currentLanguage
+                });
+            }
+        } catch (error) {
+            console.warn('Failed to initialize cache service:', error);
+        }
+    }
+
+    /**
+     * Forces an immediate cache cleanup
+     */
+    async forceCacheCleanup() {
+        if (!browser) return;
+
+        try {
+            const keys = await caches.keys();
+            await Promise.all(
+                keys.map(key => caches.delete(key))
+            );
+            this.clearAllCaches();
+            await this.initialize();
+        } catch (error) {
+            console.error('Error cleaning up caches:', error);
+        }
     }
 }
 
