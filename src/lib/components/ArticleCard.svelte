@@ -73,6 +73,20 @@
 
     let fallbackGradient = getRandomGradient();
 
+    let lastTapTime = 0;
+    const DOUBLE_TAP_DELAY = 300;
+
+    function handleTap(event: TouchEvent) {
+        const currentTime = Date.now();
+        const tapLength = currentTime - lastTapTime;
+
+        if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
+            event.preventDefault();
+            handleLikeClick();
+        }
+        lastTapTime = currentTime;
+    }
+
     onMount(() => {
         mounted = true;
         if (active) {
@@ -294,7 +308,7 @@
     class="article-card h-full w-full flex items-center justify-center relative overflow-hidden"
     class:active
     on:touchstart|passive
-    on:touchend|passive
+    on:touchend={handleTap}
 >
     <div
         class="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none select-none hidden md:flex items-center gap-2"
