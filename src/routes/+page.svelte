@@ -26,6 +26,7 @@
     import { LANGUAGE_FLAGS } from "$lib/types";
     import Header from "$lib/components/Header.svelte";
     import SvelteSeo from "$lib/components/SvelteSeo.svelte";
+    import { goto } from "$app/navigation";
 
 
     // Add these constants for virtual scrolling
@@ -164,8 +165,9 @@
 
     let isOffline = !navigator.onLine;
     let showOfflineMessage = false;
+    let showOnlineMessage = false;
 
-    // Add offline detection
+    // Add online/offline detection
     onMount(() => {
         window.addEventListener('online', handleOnlineStatus);
         window.addEventListener('offline', handleOnlineStatus);
@@ -175,11 +177,33 @@
         };
     });
 
-    function handleOnlineStatus() {
+    async function handleOnlineStatus() {
+        const wasOffline = isOffline;
         isOffline = !navigator.onLine;
+        
         if (isOffline) {
             showOfflineMessage = true;
+            showOnlineMessage = false;
             loadOfflineContent();
+        } else if (wasOffline) {
+            showOnlineMessage = true;
+            showOfflineMessage = false;
+            
+            // Clear existing articles
+            articles.set([]);
+            
+            try {
+                // Reload fresh articles
+                await loadArticleBatch(5);
+                
+                // Refresh the current page after a short delay
+                setTimeout(async () => {
+                    await goto(window.location.pathname, { replaceState: true });
+                    showOnlineMessage = false;
+                }, 1500);
+            } catch (error) {
+                console.error("Error refreshing content:", error);
+            }
         }
     }
 
@@ -588,6 +612,14 @@
          transition:fade={{ duration: 200 }}>
         You're offline - showing saved articles
         <button class="ml-2 opacity-50 hover:opacity-100" on:click={() => showOfflineMessage = false}>✕</button>
+    </div>
+{/if}
+
+{#if showOnlineMessage}
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-green-500/80 backdrop-blur-sm rounded-full text-black text-sm font-medium" 
+         transition:fade={{ duration: 200 }}>
+        You're back online - refreshing content
+        <button class="ml-2 opacity-50 hover:opacity-100" on:click={() => showOnlineMessage = false}>✕</button>
     </div>
 {/if}
 
