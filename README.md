@@ -25,7 +25,7 @@ Make sure you have [bun](https://bun.sh) installed:
 curl -fsSL https://bun.sh/install | bash
 
 # Clone the repository
-git clone https://github.com/yourusername/wakawiki.git
+git clone https://github.com/zxce3/wakawiki.git
 cd wakawiki
 
 # Install dependencies
