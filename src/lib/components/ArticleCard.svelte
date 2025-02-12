@@ -9,11 +9,13 @@
         recordInteraction,
         handleLike,
         likedArticles,
+        type InteractionType,
     } from "$lib/store/articles";
     import FeedbackBar from "./FeedbackBar.svelte";
     import { fade } from "svelte/transition";
     import LoadingSpinner from './LoadingSpinner.svelte';
     import { storeOfflineArticle } from '$lib/storage/utils';
+    import ShareArticle from './ShareArticle.svelte';
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
@@ -89,10 +91,21 @@
     // Add offline state
     let isOffline = !navigator.onLine;
 
+    let viewportStartTime = 0;
+    let maxScrollDepth = 0;
+    let readStartTime = 0;
+    let contentHeight = 0;
+
     onMount(() => {
         mounted = true;
         if (active) {
             loadContent();
+            viewportStartTime = Date.now();
+            readStartTime = Date.now();
+            // Get content height for scroll depth calculation
+            if (containerElement) {
+                contentHeight = containerElement.scrollHeight;
+            }
         }
         window.addEventListener('online', () => isOffline = false);
         window.addEventListener('offline', () => isOffline = true);
@@ -322,10 +335,61 @@
         imageLoadingState = "error";
     }
 
-    function handleLikeClick() {
-        handleLike(article).then(() => {
+    let likeLoading = false;
+
+    async function handleLikeClick() {
+        if (likeLoading) return;
+        
+        likeLoading = true;
+        try {
+            await handleLike(article);
             isLiked = $likedArticles.has(article.id);
+            handleArticleInteraction('like');
+        } catch (error) {
+            console.error('Error handling like:', error);
+        } finally {
+            likeLoading = false;
+        }
+    }
+
+    function handleScroll(event: Event) {
+        if (!active) return;
+        const element = event.target as HTMLElement;
+        const scrollDepth = (element.scrollTop + element.clientHeight) / element.scrollHeight;
+        maxScrollDepth = Math.max(maxScrollDepth, scrollDepth);
+    }
+
+    function calculateReadPercentage(): number {
+        const timeSpent = Date.now() - readStartTime;
+        const estimatedWordsPerMinute = 200;
+        const wordCount = article.content?.split(/\s+/).length || 0;
+        const estimatedReadTime = (wordCount / estimatedWordsPerMinute) * 60 * 1000;
+        return Math.min(100, (timeSpent / estimatedReadTime) * 100);
+    }
+
+    function handleArticleInteraction(type: InteractionType) {
+        const timeSpent = Date.now() - viewportStartTime;
+        recordInteraction(article, type, {
+            timeSpent,
+            scrollDepth: maxScrollDepth,
+            viewportTime: active ? Date.now() - viewportStartTime : 0,
+            readPercentage: calculateReadPercentage()
         });
+    }
+
+    let showShareModal = false;
+
+    function handleShareClick() {
+        if (navigator.share) {
+            navigator.share({
+                title: article.title,
+                url: article.url
+            }).then(() => {
+                handleArticleInteraction('share');
+            });
+        } else {
+            showShareModal = true;
+        }
     }
 
     let showFullCaption = false;
@@ -341,6 +405,12 @@
             recordInteraction(article, "like");
         }
     }
+
+    // Update the view recording
+    $: if (isVisible && !hasRecordedView) {
+        hasRecordedView = true;
+        handleArticleInteraction('view');
+    }
 </script>
 
 <div
@@ -348,6 +418,7 @@
     class="article-card h-full w-full flex items-center justify-center relative overflow-hidden"
     class:active
     on:touchend={handleTap}
+    on:scroll={handleScroll}
 >
 
     {#if !contentLoaded}
@@ -558,27 +629,33 @@
             class="flex flex-col items-center group"
             class:text-red-500={isLiked}
             class:text-white={!isLiked}
+            class:opacity-50={likeLoading}
             on:click={handleLikeClick}
+            disabled={likeLoading}
             aria-label={isLiked ? "Unlike" : "Like"}
         >
             <div
                 class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
             >
-                <svg
-                    class="w-6 h-6 @md:w-8 @md:h-8"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
+                {#if likeLoading}
+                    <div class="w-6 h-6 @md:w-8 @md:h-8 animate-spin border-2 border-current border-t-transparent rounded-full"></div>
+                {:else}
+                    <svg
+                        class="w-6 h-6 @md:w-8 @md:h-8"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
                              2 5.42 4.42 3 7.5 3
                              c1.74 0 3.41.81 4.5 2.09
                              C13.09 3.81 14.76 3
                              16.5 3 19.58 3 22 5.42
                              22 8.5c0 3.78-3.4 6.86-8.55 11.54
                              L12 21.35z"
-                    />
-                </svg>
+                        />
+                    </svg>
+                {/if}
             </div>
             <span class="text-xs @md:text-sm mt-1 font-medium text-white/90">
                 {isLiked ? "Liked" : "Like"}
@@ -626,6 +703,20 @@
                 {isOffline ? "Offline" : "Read"}
             </span>
         </a>
+
+        <button
+            class="flex flex-col items-center group"
+            on:click={handleShareClick}
+            aria-label="Share"
+        >
+            <div class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-all">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                </svg>
+            </div>
+            <span class="text-xs mt-1 font-medium text-white/90">Share</span>
+        </button>
     </div>
 
     {#if showNavigationButtons && onNavigate}
@@ -695,6 +786,12 @@
         </div>
     {/if}
 </div>
+
+<ShareArticle 
+    {article}
+    isOpen={showShareModal}
+    onClose={() => showShareModal = false}
+/>
 
 <style>
     @keyframes gradient {

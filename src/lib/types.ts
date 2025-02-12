@@ -18,9 +18,15 @@ export interface WikiArticle {
 
 export interface UserInteraction {
     articleId: string;
+    type: 'view' | 'like' | 'dislike' | 'click' | 'read' | 'share' | 'bookmark';
     timestamp: number;
-    type: 'view' | 'like';
     language: string;
+    metadata?: {
+        timeSpent?: number;
+        scrollDepth?: number;
+        viewportTime?: number;
+        readPercentage?: number;
+    };
 }
 
 export interface ArticleRecommendation {
@@ -194,10 +200,10 @@ export interface WikiSummary {
     displaytitle: string;
     namespace: { id: number; text: string };
     wikibase_item: string;
-    titles: { 
+    titles: {
         canonical: string;
         normalized: string;
-        display: string 
+        display: string
     };
     pageid: number;
     thumbnail?: {
@@ -443,8 +449,8 @@ export interface WikiError {
 }
 
 
-export type PageFunctions = 'summary' | 'images' | 'intro' | 'html' | 'content' | 
-    'categories' | 'links' | 'references' | 'coordinates' | 'langLinks' | 
+export type PageFunctions = 'summary' | 'images' | 'intro' | 'html' | 'content' |
+    'categories' | 'links' | 'references' | 'coordinates' | 'langLinks' |
     'infobox' | 'tables' | 'related';
 
 export interface PageOptions {

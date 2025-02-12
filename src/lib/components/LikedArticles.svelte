@@ -4,8 +4,8 @@
 -->
 
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { likedArticles } from '../store/articles';
+    import { onMount, onDestroy } from 'svelte';
+    import { likedArticles, recordInteraction } from '../store/articles';
     import { getLikedArticlesData } from '../storage/utils';
     import ArticleCard from './ArticleCard.svelte';
     import type { WikiArticle } from '../types';
@@ -41,16 +41,44 @@
     }
 
     // Function to handle navigation between stories
+    async function handleStoryView(article: WikiArticle) {
+        if (!article) return;
+        
+        recordInteraction(article, 'view', {
+            timeSpent: Date.now() - storyStartTime,
+            scrollDepth: 1, // Stories are full-screen
+            viewportTime: Date.now() - storyStartTime,
+            readPercentage: 100 // Assume full read for stories
+        });
+    }
+
+    let storyStartTime = Date.now();
+
     function handleNavigation(direction: 'prev' | 'next') {
         if (!likedList.length) return;
-        if (direction === 'next') {
-            currentStoryIndex =
-                currentStoryIndex < likedList.length - 1 ? currentStoryIndex + 1 : 0;
-        } else {
-            currentStoryIndex =
-                currentStoryIndex > 0 ? currentStoryIndex - 1 : likedList.length - 1;
+        
+        // Record interaction for current story before changing
+        if (likedList[currentStoryIndex]) {
+            handleStoryView(likedList[currentStoryIndex]);
         }
+        
+        // Update story index
+        if (direction === 'next') {
+            currentStoryIndex = currentStoryIndex < likedList.length - 1 ? currentStoryIndex + 1 : 0;
+        } else {
+            currentStoryIndex = currentStoryIndex > 0 ? currentStoryIndex - 1 : likedList.length - 1;
+        }
+        
+        // Reset timer for new story
+        storyStartTime = Date.now();
     }
+
+    onDestroy(() => {
+        // Record final interaction when component is destroyed
+        if (viewMode === 'story' && likedList[currentStoryIndex]) {
+            handleStoryView(likedList[currentStoryIndex]);
+        }
+    });
 
     let touchStart = { x: 0, y: 0 }; // Initial touch position
 
