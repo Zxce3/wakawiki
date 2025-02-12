@@ -1,4 +1,3 @@
-<!-- svelte-ignore export_let_unused -->
 <!-- 
     This Svelte component displays a list of liked articles.
     It supports different view modes (grid, list, story) and allows navigation between articles.
@@ -126,6 +125,11 @@
     $: likedList = storedArticles
         .filter((article) => $likedArticles.has(article.id))
         .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // Add function to check if image exists
+    function hasValidImage(article: TimestampedArticle): boolean {
+        return !!(article.imageUrl || article.thumbnail);
+    }
 </script>
 
 <div
@@ -207,16 +211,26 @@
                 <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {#each likedList as article, i (article.id)}
                         <button
-                            class="group relative w-full overflow-hidden rounded-lg aspect-square"
+                            class="group relative w-full overflow-hidden rounded-lg aspect-square bg-black/40"
                             on:click={() => switchView('story', i)}
                             aria-label={`View story for ${article.title}`}
                         >
-                            <img
-                                src={article.imageUrl}
-                                alt={article.title}
-                                class="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
-                            />
-                            <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent">
+                            {#if hasValidImage(article)}
+                                <img
+                                    src={article.imageUrl || article.thumbnail}
+                                    alt={article.title}
+                                    class="absolute inset-0 w-full h-full bg-neutral-700 object-cover transition-transform group-hover:scale-105"
+                                    loading="lazy"
+                                    on:error={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                />
+                            {:else}
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <svg class="w-18 h-18 text-white/20 bg-neutral-700" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm5 4a1 1 0 110-2 1 1 0 010 2zm4 4l-2-2-4 4h10l-4-6z" />
+                                    </svg>
+                                </div>
+                            {/if}
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent group-hover:from-black/80 transition-all duration-300">
                                 <div class="absolute bottom-0 p-2 sm:p-3 md:p-4 w-full">
                                     <h3 class="text-white font-medium text-sm line-clamp-2">
                                         {article.title}
@@ -232,15 +246,27 @@
                 <div class="max-w-2xl mx-auto space-y-2">
                     {#each likedList as article, i (article.id)}
                         <button
-                            class="flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 transition-colors w-full"
+                            class="flex items-center gap-4 p-3 rounded-lg bg-black/40 hover:bg-black/60 transition-colors w-full"
                             on:click={() => switchView('story', i)}
                             aria-label={`View story for ${article.title}`}
                         >
-                            <img
-                                src={article.imageUrl}
-                                alt={article.title}
-                                class="w-16 h-16 object-cover rounded flex-shrink-0"
-                            />
+                            <div class="w-16 h-16 rounded overflow-hidden bg-neutral-700 flex-shrink-0">
+                                {#if hasValidImage(article)}
+                                    <img
+                                        src={article.imageUrl || article.thumbnail}
+                                        alt={article.title}
+                                        class="w-full h-full object-cover"
+                                        loading="lazy"
+                                        on:error={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                    />
+                                {:else}
+                                    <div class="w-full h-full flex items-center justify-center">
+                                        <svg class="w-8 h-8 text-white/20" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm5 4a1 1 0 110-2 1 1 0 010 2zm4 4l-2-2-4 4h10l-4-6z" />
+                                        </svg>
+                                    </div>
+                                {/if}
+                            </div>
                             <div class="flex-1 text-left">
                                 <h3 class="text-white font-medium line-clamp-1">
                                     {article.title}
