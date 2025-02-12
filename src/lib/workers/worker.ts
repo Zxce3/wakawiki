@@ -37,89 +37,53 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// API Routes
-const API_ROUTES = [
-    'api.wikipedia.org/w/api.php',
-    'wikipedia.org/api/rest_v1'
+// Update API route patterns to match Wikipedia endpoints
+const WIKI_API_PATTERNS = [
+    // API endpoints for different Wikipedia actions
+    new RegExp('wikipedia\\.org/w/api\\.php'),
+    new RegExp('wikipedia\\.org/api/rest_v1/'),
 ];
 
-// Cache the Wikipedia API responses
+// Cache Wikipedia API responses
 registerRoute(
-    ({ url }) => API_ROUTES.some(route => url.href.includes(route)),
+    ({ url }) => WIKI_API_PATTERNS.some(pattern => pattern.test(url.href)),
     new NetworkFirst({
         cacheName: CACHE_NAMES.api,
         plugins: [
+            new CacheableResponsePlugin({
+                statuses: [0, 200],
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                }
+            }),
             new ExpirationPlugin({
-                maxEntries: 100,
+                maxEntries: 200, // Increased from 100
                 maxAgeSeconds: 60 * 60 * 24 // 24 hours
             }),
-            new CacheableResponsePlugin({
-                statuses: [0, 200]
-            })
-        ]
+        ],
+        networkTimeoutSeconds: 3
     })
 );
 
-// Cache articles with background sync
-const bgSyncPlugin = new BackgroundSyncPlugin('articles-queue', {
-    maxRetentionTime: 24 * 60 // 24 hours in minutes
-});
-
+// Cache article content
 registerRoute(
-    ({ url }) => url.pathname.includes('/page/'),
+    ({ url }) => url.pathname.includes('/page/') || url.pathname.includes('/summary/'),
     new StaleWhileRevalidate({
         cacheName: CACHE_NAMES.articles,
         plugins: [
-            bgSyncPlugin,
+            new CacheableResponsePlugin({
+                statuses: [0, 200],
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                }
+            }),
             new ExpirationPlugin({
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
-            })
-        ]
-    })
-);
-
-// Cache images with a Cache First strategy
-registerRoute(
-    ({ request }) => request.destination === 'image',
-    new CacheFirst({
-        cacheName: CACHE_NAMES.images,
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 100,
-                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
             }),
-            new CacheableResponsePlugin({
-                statuses: [0, 200]
+            new BackgroundSyncPlugin('articles-queue', {
+                maxRetentionTime: 24 * 60 // 24 hours in minutes
             })
         ]
     })
 );
-
-// Cache static assets
-registerRoute(
-    ({ request }) => ['style', 'script', 'font'].includes(request.destination),
-    new StaleWhileRevalidate({
-        cacheName: CACHE_NAMES.static,
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-            })
-        ]
-    })
-);
-
-// Handle cache cleanup
-self.addEventListener('message', (event) => {
-    if (event.data?.type === 'CLEAR_CACHE') {
-        event.waitUntil(
-            caches.keys().then(keys => Promise.all(
-                keys.map(key => caches.delete(key))
-            ))
-        );
-    }
-});
-
-// Precache static assets
-precacheAndRoute(self.__WB_MANIFEST);
