@@ -12,14 +12,14 @@ import type {
     WikiArticle,
     FeedbackWeights,
     LocalUserInteraction,
-} from '../types';
+    SupportedLanguage
+} from '$lib/types';
 import {
     fetchArticleMetadata,
     fetchRandomArticle,
     searchByCategory,
     getRelatedCategories
-} from '../api/wikipedia';
-import type { SupportedLanguage } from '../types';
+} from '$lib/api/wikipedia';
 
 const recentRecommendations = new Map<string, number>();
 const RECOMMENDATION_COOLDOWN = 1000 * 60 * 30; // Cooldown period for recommendations

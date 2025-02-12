@@ -6,8 +6,8 @@
  */
 
 import wiki from 'wikipedia';
-import type { WikiArticle, ArticleRecommendation, SupportedLanguage } from '../types';
-import { searchByCategory, fetchRandomArticle } from '../api/wikipedia';
+import type { WikiArticle, ArticleRecommendation, SupportedLanguage } from '$lib/types';
+import { searchByCategory, fetchRandomArticle } from '$lib/api/wikipedia';
 
 interface FetchRequest {
   type: 'recommendations' | 'random' | 'category';

@@ -4,16 +4,13 @@
         WikiArticle,
         FeedbackType,
         ArticleRecommendation,
-        SupportedLanguage,
-    } from "../types";
+    } from "$lib/types";
     import {
         recordInteraction,
         handleLike,
         likedArticles,
     } from "../store/articles";
     import FeedbackBar from "./FeedbackBar.svelte";
-    import LoadingSpinner from "./LoadingSpinner.svelte";
-    import { fetchArticleImages } from "../api/wikipedia";
     import { fade } from "svelte/transition";
     export let article: WikiArticle;
     export let active = false;

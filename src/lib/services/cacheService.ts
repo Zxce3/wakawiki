@@ -5,7 +5,7 @@
  * categories, summaries, and images. It helps improve performance by reducing redundant API calls.
  */
 
-import type { WikiArticle, SupportedLanguage } from '../types';
+import type { WikiArticle, SupportedLanguage } from '$lib/types';
 
 type CacheEntry<T> = {
     data: T;

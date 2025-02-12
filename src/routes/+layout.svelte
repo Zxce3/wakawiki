@@ -3,12 +3,8 @@
     import { browser } from "$app/environment";
     import { onMount } from "svelte";
     import { cleanupOldData } from "$lib/storage/utils";
-    import { language, setInitialLanguage } from "../lib/store/language";
-    import {
-        initialLoading,
-        setLoading,
-        isLoading,
-    } from "../lib/store/loading";
+    import { language, setInitialLanguage } from "$lib/store/language";
+    import { initialLoading, setLoading, isLoading } from "$lib/store/loading";
     import LoadingSpinner from "$lib/components/LoadingSpinner.svelte";
     import { getStoredLanguage } from "$lib/storage/utils";
 
@@ -22,7 +18,7 @@
                 if (!window.recommendationsWorker) {
                     window.recommendationsWorker = new Worker(
                         new URL(
-                            "../lib/workers/recommendations.ts",
+                            "$lib/workers/recommendations.ts",
                             import.meta.url,
                         ),
                         { type: "module" },
@@ -37,7 +33,7 @@
                 if (!window.articleLoaderWorker) {
                     window.articleLoaderWorker = new Worker(
                         new URL(
-                            "../lib/workers/articleLoader.ts",
+                            "$lib/workers/articleLoader.ts",
                             import.meta.url,
                         ),
                         { type: "module" },

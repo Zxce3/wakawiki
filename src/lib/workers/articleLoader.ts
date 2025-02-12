@@ -6,9 +6,9 @@
  */
 
 import wiki from 'wikipedia';
-import type { WikiArticle, SupportedLanguage } from '../types';
-import { fetchRandomArticle } from '../api/wikipedia';
-import { cacheService } from '../services/cacheService';
+import type { WikiArticle, SupportedLanguage } from '$lib/types';
+import { fetchRandomArticle } from '$lib/api/wikipedia';
+import { cacheService } from '$lib/services/cacheService';
 
 const BATCH_SIZE = 5;
 const PREFETCH_THRESHOLD = 10;

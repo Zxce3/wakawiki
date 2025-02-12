@@ -8,11 +8,11 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { language } from './language';
-import { fetchRandomArticle } from '../api/wikipedia';
-import { storeInteraction, storeLikedArticle, removeLikedArticle, getLikedArticlesData } from '../storage/utils';
-import type { WikiArticle, SupportedLanguage, ArticleRecommendation } from '../types';
+import { fetchRandomArticle } from '$lib/api/wikipedia';
+import { storeInteraction, storeLikedArticle, removeLikedArticle, getLikedArticlesData } from '$lib/storage/utils';
+import type { WikiArticle, SupportedLanguage, ArticleRecommendation } from '$lib/types';
 
-declare module '../types' {
+declare module '$lib/types' {
     interface WikiArticle {
         isRecommendation?: boolean;
         score?: number;
@@ -63,7 +63,7 @@ const PRELOAD_BATCH_SIZE = 5;
 if (browser) {
     try {
         articleLoaderWorker = new Worker(
-            new URL('../workers/articleLoader.ts', import.meta.url),
+            new URL('$lib/workers/articleLoader.ts', import.meta.url),
             { type: 'module' }
         );
 
@@ -72,15 +72,15 @@ if (browser) {
 
         articleLoaderWorker.onmessage = (event) => {
             const { type, article, articles: newArticles, error } = event.data;
-            
+
             // Clear any pending timeouts
             if (loadingTimer) clearTimeout(loadingTimer);
-            
+
             switch (type) {
                 case 'article':
                     // Single article handling
                     articles.update(existing => {
-                        const updated = article && !existing.some(a => a.id === article.id) 
+                        const updated = article && !existing.some(a => a.id === article.id)
                             ? [...existing, article]
                             : existing;
                         loadingMore.set(false);
@@ -97,12 +97,12 @@ if (browser) {
                                 newArticle => !existing.some(e => e.id === newArticle.id)
                             );
                             const updatedArticles = [...existing, ...uniqueArticles];
-                            
+
                             // Trigger next batch load if needed
                             if (updatedArticles.length < 10) { // Keep minimum buffer
                                 queueMicrotask(() => loadMoreArticles(PRELOAD_BATCH_SIZE));
                             }
-                            
+
                             return updatedArticles;
                         });
                     }
@@ -116,7 +116,7 @@ if (browser) {
                     loadingState.isLoading = false;
                     break;
             }
-            
+
             initializing.set(false);
         };
 
@@ -175,7 +175,7 @@ if (browser) {
             article.categories?.forEach(cat => categories.add(cat));
         });
         likedCategories.set(categories);
-        
+
         if (categories.size > 0 && window.recommendationsWorker) {
             window.recommendationsWorker.postMessage({
                 type: 'initialize',
@@ -202,7 +202,7 @@ export async function handleLike(article: WikiArticle): Promise<void> {
         if (newLikes.has(article.id)) {
             newLikes.delete(article.id);
             removeLikedArticle(article.id);
-            
+
             if (article.categories) {
                 likedCategories.update(cats => {
                     const newCats = new Set(cats);
@@ -213,7 +213,7 @@ export async function handleLike(article: WikiArticle): Promise<void> {
         } else {
             newLikes.add(article.id);
             storeLikedArticle(article);
-            
+
             if (article.categories) {
                 likedCategories.update(cats => {
                     const newCats = new Set(cats);
@@ -226,17 +226,17 @@ export async function handleLike(article: WikiArticle): Promise<void> {
     });
 }
 
-const BUFFER_THRESHOLD = 5; 
-const BATCH_SIZE = 5; 
+const BUFFER_THRESHOLD = 5;
+const BATCH_SIZE = 5;
 const MINIMUM_EXCERPT_LENGTH = 100;
-const DIVERSITY_WINDOW = 5; 
-const LOAD_THRESHOLD = 6; 
-const MAX_RETRIES = 3; 
-const PARALLEL_LOADS = 6; 
-const PRELOAD_THRESHOLD = 5; 
-const BUFFER_SIZE = 10; 
-const SCROLL_THROTTLE = 150; 
-const RECOMMENDATION_INTERVAL = 3; 
+const DIVERSITY_WINDOW = 5;
+const LOAD_THRESHOLD = 6;
+const MAX_RETRIES = 3;
+const PARALLEL_LOADS = 6;
+const PRELOAD_THRESHOLD = 5;
+const BUFFER_SIZE = 10;
+const SCROLL_THROTTLE = 150;
+const RECOMMENDATION_INTERVAL = 3;
 
 /**
  * Determines if a recommendation should be inserted at a given index.
@@ -245,7 +245,7 @@ export function shouldInsertRecommendation(index: number): boolean {
     return index > 0 && index % RECOMMENDATION_INTERVAL === 0;
 }
 
-const RECOMMENDATION_BATCH_SIZE = 2; 
+const RECOMMENDATION_BATCH_SIZE = 2;
 const MIN_EXCERPT_LENGTH = 100;
 const MIN_TITLE_LENGTH = 3;
 const REQUIRED_FIELDS: (keyof WikiArticle)[] = ['id', 'title', 'excerpt', 'url'];
@@ -257,7 +257,7 @@ function isValidRecommendation(article: WikiArticle): boolean {
     if (!REQUIRED_FIELDS.every((field: keyof WikiArticle) => article[field])) return false;
     if (!article.excerpt || article.excerpt.length < MIN_EXCERPT_LENGTH) return false;
     if (!article.title || article.title.length < MIN_TITLE_LENGTH) return false;
-    if (article.title.toLowerCase().includes('stub') || 
+    if (article.title.toLowerCase().includes('stub') ||
         article.title.toLowerCase().startsWith('list of')) return false;
     if (!article.imageUrl && !article.thumbnail) return false;
 
@@ -270,13 +270,13 @@ function isValidRecommendation(article: WikiArticle): boolean {
 async function insertRecommendation(articles: WikiArticle[], recommendations: Map<string, number>): Promise<WikiArticle[]> {
     const result: WikiArticle[] = [];
     const recommendationEntries = Array.from(recommendations.entries())
-        .sort(([, a], [, b]) => b - a); 
+        .sort(([, a], [, b]) => b - a);
 
     let recommendationIndex = 0;
-    
+
     for (let i = 0; i < articles.length; i++) {
         result.push(articles[i]);
-        
+
         if ((i + 1) % 3 === 0 && recommendationIndex < recommendationEntries.length) {
             const [recId, score] = recommendationEntries[recommendationIndex];
             try {
@@ -285,7 +285,7 @@ async function insertRecommendation(articles: WikiArticle[], recommendations: Ma
                     page.summary(),
                     page.categories()
                 ]);
-                
+
                 const recommendedArticle = {
                     id: String(summary.pageid),
                     title: summary.title,
@@ -311,7 +311,7 @@ async function insertRecommendation(articles: WikiArticle[], recommendations: Ma
             }
         }
     }
-    
+
     return result;
 }
 
@@ -325,8 +325,8 @@ async function loadQualityArticle(language: SupportedLanguage): Promise<WikiArti
     while (attempts < maxAttempts) {
         try {
             const article = await fetchRandomArticle(language);
-            if (article && 
-                isArticleQualityGood(article) && 
+            if (article &&
+                isArticleQualityGood(article) &&
                 isArticleDiverse(article, get(articles))) {
                 return article;
             }
@@ -343,24 +343,24 @@ async function loadQualityArticle(language: SupportedLanguage): Promise<WikiArti
  */
 async function loadArticlesIntoBuffer() {
     if (get(isLoadingBuffer)) return;
-    
+
     isLoadingBuffer.set(true);
     try {
         const currentLanguage = get(language) as SupportedLanguage;
         const newArticles: WikiArticle[] = [];
-        
+
         for (let i = 0; i < BATCH_SIZE; i++) {
             const article = await fetchRandomArticle(currentLanguage);
             if (article && isArticleQualityGood(article)) {
                 newArticles.push(article);
             }
         }
-        
+
         articleBuffer.update(currentBuffer => {
             const buffer = Array.isArray(currentBuffer) ? currentBuffer : [];
             return [...buffer, ...newArticles];
         });
-        
+
     } catch (error) {
         console.error('Error loading articles into buffer:', error);
     } finally {
@@ -374,8 +374,8 @@ async function loadArticlesIntoBuffer() {
 async function fetchValidImage(page: any, retries = MAX_RETRIES): Promise<{ main: string | undefined; thumbnail: string | undefined }> {
     try {
         const images = await page.images();
-        const validImages = images.filter((img: { url: string; }) => 
-            isValidImageUrl(img.url) && 
+        const validImages = images.filter((img: { url: string; }) =>
+            isValidImageUrl(img.url) &&
             !img.url.includes('Commons-logo') &&
             !img.url.includes('Wiki-logo') &&
             !img.url.endsWith('.svg')
@@ -440,7 +440,7 @@ if (browser) {
         lastScroll = now;
 
         if (scrollTimeout) clearTimeout(scrollTimeout);
-        
+
         scrollTimeout = setTimeout(() => {
             const status = get(loadingStatus);
             if (status.isLoading) return;
@@ -471,12 +471,12 @@ if (browser) {
                     type: 'changeLanguage',
                     language: lang
                 });
-                
+
                 // Wait a bit before loading new articles
                 setTimeout(() => {
                     loadMoreArticles(BATCH_SIZE);
                 }, 100);
-                
+
             } catch (error) {
                 console.error('Error changing language:', error);
                 loadingStatus.update(s => ({ ...s, error: 'Failed to change language' }));
@@ -491,23 +491,23 @@ if (browser) {
 async function preloadArticles() {
     const status = get(loadingStatus);
     if (status.preloading) return;
-    
+
     loadingStatus.update(s => ({ ...s, preloading: true }));
-    
+
     try {
-        const currentBuffer = get(articleBuffer) || []; 
-        
+        const currentBuffer = get(articleBuffer) || [];
+
         if (currentBuffer.length >= BUFFER_SIZE) return;
-        
+
         const promises = Array(PARALLEL_LOADS)
             .fill(null)
             .map(() => fetchQualityArticle(get(language)));
-        
+
         const newArticles = await Promise.all(promises);
         const validArticles = newArticles
             .filter((article): article is WikiArticle => article !== null)
             .filter(article => isArticleQualityGood(article));
-            
+
         articleBuffer.update(buffer => {
             const currentBuffer = Array.isArray(buffer) ? buffer : [];
             return [...currentBuffer, ...validArticles];
@@ -545,10 +545,10 @@ async function fetchQualityArticle(language: SupportedLanguage): Promise<WikiArt
  */
 export async function loadMoreArticles(count = loadingState.batchSize) {
     if (loadingState.isLoading || get(loadingMore)) return;
-    
+
     const currentArticles = get(articles);
     if (currentArticles.length >= 100) return; // Maximum limit
-    
+
     loadingMore.set(true);
     loadingState.isLoading = true;
 
@@ -556,7 +556,7 @@ export async function loadMoreArticles(count = loadingState.batchSize) {
         if (browser && articleLoaderWorker) {
             // Clear any previous recommendations
             recommendations.set(new Map());
-            
+
             articleLoaderWorker.postMessage({
                 type: 'load',
                 language: get(language),
@@ -581,7 +581,7 @@ export async function loadMoreArticles(count = loadingState.batchSize) {
 if (browser) {
     articleLoaderWorker?.addEventListener('message', (event) => {
         const { type, articles: newArticles, error } = event.data;
-        
+
         switch (type) {
             case 'articles':
                 if (Array.isArray(newArticles) && newArticles.length > 0) {
@@ -611,7 +611,7 @@ if (browser) {
 async function loadQualityArticles(count: number): Promise<WikiArticle[]> {
     const currentLanguage = get(language) as SupportedLanguage;
     const loadedArticles: WikiArticle[] = [];
-    
+
     while (loadedArticles.length < count) {
         try {
             const article = await fetchRandomArticle(currentLanguage);
@@ -622,7 +622,7 @@ async function loadQualityArticles(count: number): Promise<WikiArticle[]> {
             console.warn('Error loading article:', error);
         }
     }
-    
+
     return loadedArticles;
 }
 
@@ -675,7 +675,7 @@ language.subscribe(lang => {
  */
 export function checkScrollPosition(container: HTMLElement) {
     const scrollPercent = (container.scrollTop + container.clientHeight) / container.scrollHeight;
-    
+
     if (scrollPercent > PRELOAD_THRESHOLD && articleLoaderWorker) {
         articleLoaderWorker.postMessage({
             type: 'prefetch',

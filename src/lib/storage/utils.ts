@@ -13,7 +13,7 @@ import type {
     LikedArticle,
     SupportedLanguage,
     ArticleFeedback
-} from '../types';
+} from '$lib/types';
 
 const STORAGE_KEYS = {
     INTERACTIONS: 'wakawiki:interactions',
