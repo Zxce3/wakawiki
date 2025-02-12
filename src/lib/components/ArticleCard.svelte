@@ -128,10 +128,12 @@
         }
     }
 
+    let imageLoadingState: "idle" | "loading" | "loaded" | "error" = "idle";
+
     const loadImage = async () => {
         if (!article.imageUrl || imageLoaded || !mounted || !isVisible) return;
 
-        // Use smaller thumbnails first
+        imageLoadingState = "loading";
         const thumbnailUrl =
             article.thumbnail?.replace(/\/\d+px-/, "/300px-") ||
             article.imageUrl;
@@ -150,11 +152,13 @@
             if (mounted) {
                 imageLoaded = true;
                 imageLoading = false;
+                imageLoadingState = "loaded";
             }
         } catch (error) {
             if (mounted) {
                 imageError = true;
                 imageLoading = false;
+                imageLoadingState = "error";
             }
         }
     };
@@ -365,28 +369,45 @@
     <div class="absolute inset-0">
         {#if article.imageUrl && !imageError}
             <div class="relative w-full h-full">
-                {#if imageLoading}
+                {#if imageLoadingState === "loading"}
                     <div
-                        class="absolute inset-0 bg-neutral-800 animate-pulse"
-                    ></div>
+                        class="absolute inset-0 bg-neutral-800 animate-pulse flex items-center justify-center"
+                        transition:fade={{ duration: 200 }}
+                    >
+                        <div
+                            class="p-3 bg-black/40 backdrop-blur-sm rounded-full"
+                        >
+                            <div
+                                class="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"
+                            ></div>
+                        </div>
+                    </div>
                 {/if}
 
                 {#if isSVG}
                     <div
-                        class="absolute inset-0 bg-gradient-to-b from-neutral-60 to-neutral-700"
+                        class="absolute inset-0 bg-gradient-to-b from-neutral-60 to-neutral-700 transition-opacity duration-300"
+                        class:opacity-50={imageLoaded}
+                        class:opacity-100={!imageLoaded}
                     ></div>
                 {:else}
                     <div
-                        class="absolute inset-0 bg-gradient-to-b from-black-60 to-black-70"
+                        class="absolute inset-0 bg-gradient-to-b from-black-60 to-black-70 transition-opacity duration-300"
+                        class:opacity-50={imageLoaded}
+                        class:opacity-100={!imageLoaded}
                     ></div>
                 {/if}
 
                 <img
                     src={article.imageUrl}
                     alt={article.title}
-                    class="w-full h-full object-contain transition-opacity duration-300"
-                    class:opacity-0={imageLoading || !imageLoaded}
-                    class:opacity-100={imageLoaded && !imageLoading}
+                    class="w-full h-full object-contain transition-all duration-500"
+                    class:opacity-0={!imageLoaded ||
+                        imageLoadingState === "loading"}
+                    class:opacity-100={imageLoaded &&
+                        imageLoadingState === "loaded"}
+                    class:scale-[1.02]={!imageLoaded}
+                    class:scale-100={imageLoaded}
                     loading={isVisible ? "eager" : "lazy"}
                     decoding="async"
                     fetchpriority={isVisible ? "high" : "low"}
@@ -690,5 +711,10 @@
         to {
             transform: rotate(360deg);
         }
+    }
+    img {
+        backface-visibility: hidden;
+        transform: translateZ(0);
+        will-change: opacity, transform;
     }
 </style>
