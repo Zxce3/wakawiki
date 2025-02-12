@@ -15,47 +15,19 @@
     let pwaInfo: any;
     // svelte-ignore non_reactive_update
     let pwaAssetsHead: any;
-    let useRegisterSW: any;
 
     async function initPWA() {
         if (browser) {
             const pwaModule = await import("virtual:pwa-info");
             const pwaAssetsModule = await import("virtual:pwa-assets/head");
-            const pwaRegisterModule = await import(
-                "virtual:pwa-register/svelte"
-            );
-
             pwaInfo = pwaModule.pwaInfo;
             pwaAssetsHead = pwaAssetsModule.pwaAssetsHead;
-            useRegisterSW = pwaRegisterModule.useRegisterSW;
         }
     }
 
     onMount(() => {
         initPWA();
     });
-
-    // Only initialize SW in browser environment
-    let swFunctions = {
-        needRefresh: false,
-        updateServiceWorker: () => {},
-        offlineReady: false,
-    };
-
-    if (browser && useRegisterSW) {
-        swFunctions = useRegisterSW({
-            immediate: true,
-            onRegistered(r: any) {
-                console.log("SW Registered:", r);
-            },
-            onRegisterError(error: any) {
-                console.error("SW registration error:", error);
-            },
-            onOfflineReady() {
-                console.log("App ready to work offline");
-            },
-        });
-    }
 
     async function initApp() {
         if (!appInitialized && browser) {
@@ -128,4 +100,6 @@
     {@render children()}
 </div>
 
-<ReloadPrompt />
+{#if browser}
+    <ReloadPrompt />
+{/if}

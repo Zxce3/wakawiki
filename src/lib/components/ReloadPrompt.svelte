@@ -1,25 +1,36 @@
 <script lang="ts">
-    import { useRegisterSW } from 'virtual:pwa-register/svelte';
-    
-    const {
-        needRefresh,
-        updateServiceWorker,
-        offlineReady
-    } = useRegisterSW({
-        onRegistered(r: any) {
-            console.log(`SW Registered: ${r}`);
-        },
-        onRegisterError(error: any) {
-            console.error('SW registration error:', error);
-        },
-    });
+    import { browser } from "$app/environment";
+    import { useRegisterSW } from "virtual:pwa-register/svelte";
 
-    const close = () => {
-        offlineReady.set(false);
-        needRefresh.set(false);
-    };
+    import { type Writable } from 'svelte/store';
+    
+    let needRefresh: Writable<boolean>;
+    let offlineReady: Writable<boolean>;
+    let updateServiceWorker = (p0?: boolean) => {};
+
+    if (browser) {
+        const { needRefresh: _needRefresh, 
+                offlineReady: _offlineReady, 
+                updateServiceWorker: _updateServiceWorker } = useRegisterSW({
+            onRegistered(r) {
+                console.log("SW Registered");
+            },
+            onRegisterError(error) {
+                console.log("SW registration error", error);
+            },
+        });
+
+        needRefresh = _needRefresh;
+        offlineReady = _offlineReady;
+        updateServiceWorker = _updateServiceWorker;
+    }
 
     $: toast = $offlineReady || $needRefresh;
+
+    function close() {
+        offlineReady.set(false);
+        needRefresh.set(false);
+    }
 </script>
 
 {#if toast}
