@@ -55,10 +55,6 @@
     });
 </script>
 
-<svelte:head>
-    <title>WakaWiki</title>
-</svelte:head>
-
 <LoadingSpinner
     fullscreen
     message={$initialLoading.message}

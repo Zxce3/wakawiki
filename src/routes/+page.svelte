@@ -25,6 +25,7 @@
     import RelatedArticles from "$lib/components/RelatedArticles.svelte";
     import { LANGUAGE_FLAGS } from "$lib/types";
     import Header from "$lib/components/Header.svelte";
+    import SvelteSeo from "$lib/components/SvelteSeo.svelte";
 
 
     // Add these constants for virtual scrolling
@@ -375,6 +376,13 @@
         }
     });
 </script>
+
+<!-- Always render SvelteSeo, passing null during loading -->
+<SvelteSeo article={$articles.length > 0 ? $articles[currentIndex] : null} />
+
+{#if $articles.length > 0}
+    <SvelteSeo article={$articles[currentIndex]} />
+{/if}
 
 <div class="fixed inset-0 bg-black">
     {#if !initialLoadComplete}
