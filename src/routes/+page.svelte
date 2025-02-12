@@ -5,9 +5,7 @@
     import {
         articles,
         loadMoreArticles,
-        loading,
         likedArticles,
-        loadingMore,
         recommendations,
         articleBuffer,
     } from "$lib/store/articles";
@@ -20,17 +18,13 @@
     import type { ArticleRecommendation } from "$lib/types";
     import { getRandomProjectAd } from "$lib/config/projects";
     import ProjectAd from "$lib/components/ProjectAd.svelte";
-    import wiki from "wikipedia";
     import { languageLoading, setLoading } from "$lib/store/loading";
     import LoadingSpinner from "$lib/components/LoadingSpinner.svelte";
     import { fade } from "svelte/transition";
-    import { checkScrollPosition } from "$lib/store/articles";
-    import { fetchRandomArticle } from "$lib/api/wikipedia";
-    import { getBrowserLanguage, getStoredLanguage } from "$lib/storage/utils";
-    import { error } from "@sveltejs/kit";
+    import { getStoredLanguage } from "$lib/storage/utils";
     import RelatedArticles from "$lib/components/RelatedArticles.svelte";
+    import { LANGUAGE_FLAGS } from "$lib/types";
 
-    const INITIAL_ARTICLES_COUNT = 6;
 
     // Add these constants for virtual scrolling
     const VISIBLE_ITEMS = 5; // Number of items to keep rendered
@@ -51,24 +45,6 @@
             }
         });
     }
-
-    const languages: Record<SupportedLanguage, string> = {
-        en: "🇬🇧",
-        es: "🇪🇸",
-        fr: "🇫🇷",
-        de: "🇩🇪",
-        zh: "🇨🇳",
-        ja: "🇯🇵",
-        ko: "🇰🇷",
-        ru: "🇷🇺",
-        it: "🇮🇹",
-        pt: "🇵🇹",
-        ar: "🇸🇦",
-        hi: "🇮🇳",
-        nl: "🇳🇱",
-        pl: "🇵🇱",
-        id: "🇮🇩",
-    };
 
     let currentIndex = 0;
     let showLikedArticles = false;
@@ -177,10 +153,6 @@
     }
 
     let isLoading = false;
-    let lastLoadTime = 0;
-    const LOAD_COOLDOWN = 250;
-    const INITIAL_BATCH_SIZE = 5;
-    const SCROLL_BATCH_SIZE = 3;
 
     let contentReady = false;
     let initialLoadComplete = false;
@@ -355,7 +327,7 @@
     };
 
     const onSelect = async (newLang: SupportedLanguage) => {
-        setLoading("language", true, `Changing to ${languages[newLang]}`);
+        setLoading("language", true, `Changing to ${LANGUAGE_FLAGS[newLang]}`);
         await handleLanguageChange();
         showLanguageSelector = false;
     };
@@ -445,9 +417,9 @@
                     on:click={() => (showLanguageSelector = true)}
                     aria-label="Select Language"
                 >
-                    <span class="text-2xl"
-                        >{languages[$language as SupportedLanguage]}</span
-                    >
+                    <span class="text-2xl">
+                        {LANGUAGE_FLAGS[$language as SupportedLanguage]}
+                    </span>
                 </button>
 
                 <div class="flex gap-2">

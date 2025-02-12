@@ -509,6 +509,29 @@ export interface WikiMetadata {
     popularity: number;
 }
 
+export const LANGUAGE_CONFIG = [
+    { code: 'en', name: 'English', flag: '🇬🇧' },
+    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
+    { code: 'fr', name: 'French', flag: '🇫🇷' },
+    { code: 'de', name: 'German', flag: '🇩🇪' },
+    { code: 'zh', name: 'Chinese', flag: '🇨🇳' },
+    { code: 'ja', name: 'Japanese', flag: '🇯🇵' },
+    { code: 'ko', name: 'Korean', flag: '🇰🇷' },
+    { code: 'ru', name: 'Russian', flag: '🇷🇺' },
+    { code: 'it', name: 'Italian', flag: '🇮🇹' },
+    { code: 'pt', name: 'Portuguese', flag: '🇵🇹' },
+    { code: 'ar', name: 'Arabic', flag: '🇸🇦' },
+    { code: 'hi', name: 'Hindi', flag: '🇮🇳' },
+    { code: 'nl', name: 'Dutch', flag: '🇳🇱' },
+    { code: 'pl', name: 'Polish', flag: '🇵🇱' },
+    { code: 'id', name: 'Indonesian', flag: '🇮🇩' },
+] as const;
+
+export const LANGUAGE_MAP = new Map(LANGUAGE_CONFIG.map(l => [l.code, l]));
+export const LANGUAGE_FLAGS = Object.fromEntries(
+    LANGUAGE_CONFIG.map(l => [l.code, l.flag])
+) as Record<SupportedLanguage, string>;
+
 declare global {
     interface Window {
         recommendationsWorker: Worker;

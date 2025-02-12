@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { language } from "../store/language";
-    import { setStoredLanguage } from "../storage/utils";
-    import type { SupportedLanguage } from "../types";
+    import { language } from "$lib/store/language";
+    import { setStoredLanguage } from "$lib/storage/utils";
+    import type { SupportedLanguage } from "$lib/types";
+    import { LANGUAGE_CONFIG } from "$lib/types";
     import { onMount } from "svelte";
 
     export let isOpen = false;
@@ -11,26 +12,6 @@
 
     let loading = true;
     let error: string | null = null;
-
-    const languageConfig = [
-        { code: "en", name: "English", flag: "🇬🇧" },
-        { code: "es", name: "Spanish", flag: "🇪🇸" },
-        { code: "fr", name: "French", flag: "🇫🇷" },
-        { code: "de", name: "German", flag: "🇩🇪" },
-        { code: "zh", name: "Chinese", flag: "🇨🇳" },
-        { code: "ja", name: "Japanese", flag: "🇯🇵" },
-        { code: "ko", name: "Korean", flag: "🇰🇷" },
-        { code: "ru", name: "Russian", flag: "🇷🇺" },
-        { code: "it", name: "Italian", flag: "🇮🇹" },
-        { code: "pt", name: "Portuguese", flag: "🇵🇹" },
-        { code: "ar", name: "Arabic", flag: "🇸🇦" },
-        { code: "hi", name: "Hindi", flag: "🇮🇳" },
-        { code: "nl", name: "Dutch", flag: "🇳🇱" },
-        { code: "pl", name: "Polish", flag: "🇵🇱" },
-        { code: "id", name: "Indonesian", flag: "🇮🇩" },
-    ] as const;
-
-    const languageMap = new Map(languageConfig.map((l) => [l.code, l]));
 
     async function selectLanguage(code: SupportedLanguage) {
         try {
@@ -88,7 +69,7 @@
         <div
             class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-4 max-w-2xl"
         >
-            {#each languageConfig as { code, name, flag }}
+            {#each LANGUAGE_CONFIG as { code, name, flag }}
                 <button
                     class="aspect-square rounded-2xl transition-all hover:scale-105 bg-white/10 hover:bg-white/20 flex flex-col items-center justify-center gap-2"
                     class:ring-2={$language === code}
