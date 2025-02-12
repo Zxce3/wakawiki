@@ -32,6 +32,14 @@
 
     const INITIAL_ARTICLES_COUNT = 6;
 
+    // Add these constants for virtual scrolling
+    const VISIBLE_ITEMS = 5; // Number of items to keep rendered
+    const BUFFER_ITEMS = 2; // Number of items to keep in buffer above/below
+
+    // Add these variables for scroll optimization
+    let visibleRange = { start: 0, end: VISIBLE_ITEMS };
+    let containerHeight = 0;
+    let itemHeight = 0;
 
     $: if ((data as any).initialLanguage && browser) {
         language.set((data as any).initialLanguage as SupportedLanguage);
@@ -158,8 +166,6 @@
         });
     }
 
-
-
     async function handleLanguageChange() {
         setLoading("language", true, "Changing language");
 
@@ -175,8 +181,6 @@
     const LOAD_COOLDOWN = 250;
     const INITIAL_BATCH_SIZE = 5;
     const SCROLL_BATCH_SIZE = 3;
-
-
 
     let contentReady = false;
     let initialLoadComplete = false;
@@ -231,12 +235,31 @@
     const SCROLL_TRIGGER_THRESHOLD = 0.8;
     let lastScrollTop = 0;
 
+    // Function to update visible range based on scroll position
+    function updateVisibleRange(scrollTop: number) {
+        const newIndex = Math.floor(scrollTop / itemHeight);
+        const start = Math.max(0, newIndex - BUFFER_ITEMS);
+        const end = Math.min(
+            $articles.length,
+            newIndex + VISIBLE_ITEMS + BUFFER_ITEMS,
+        );
+
+        if (start !== visibleRange.start || end !== visibleRange.end) {
+            visibleRange = { start, end };
+        }
+    }
+
+    // Modified scroll handler
     function handleScroll(e: Event) {
         if (loadingBatch) return;
 
         const container = e.target as HTMLElement;
         const { scrollTop, clientHeight, scrollHeight } = container;
 
+        // Update which items should be visible
+        updateVisibleRange(scrollTop);
+
+        // Rest of existing scroll handler logic
         // Detect scroll direction
         const scrollingDown = scrollTop > lastScrollTop;
         lastScrollTop = scrollTop;
@@ -257,6 +280,19 @@
             const visibleArticle = $articles[newIndex];
             if (visibleArticle) handleArticleView(visibleArticle);
         }
+    }
+
+    // Calculate item height on mount
+    onMount(() => {
+        if (browser) {
+            itemHeight = window.innerHeight; // Each article takes full viewport height
+            containerHeight = itemHeight * $articles.length;
+        }
+    });
+
+    // Update container height when articles change
+    $: if (browser) {
+        containerHeight = itemHeight * $articles.length;
     }
 
     // Initial load
@@ -288,7 +324,6 @@
             },
         ]);
     }
-
 
     function handleArticleView(article: WikiArticle) {
         if (browser && window.recommendationsWorker) {
@@ -371,7 +406,6 @@
         return index === lastVisibleIndex;
     }
 
-
     onMount(() => {
         if (browser) {
             if ($articles.length === 0) {
@@ -379,8 +413,6 @@
             }
         }
     });
-
-
 </script>
 
 <div class="fixed inset-0 bg-black">
@@ -508,13 +540,59 @@
             </div>
 
             <main
-                class="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-none"
+                class="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-none relative"
                 bind:this={articlesContainer}
                 on:scroll={handleScroll}
                 role="feed"
                 aria-busy={loadingBatch}
                 aria-label="Articles feed"
             >
+                <!-- Set container height to maintain scroll area -->
+                <div
+                    class="absolute inset-x-0"
+                    style="height: {containerHeight}px"
+                >
+                    {#each $articles.slice(visibleRange.start, visibleRange.end) as article, index (article.id + "-" + (index + visibleRange.start))}
+                        <article
+                            class="article-container snap-start absolute w-full"
+                            style="transform: translateY({(index +
+                                visibleRange.start) *
+                                100}vh)"
+                            on:touchstart={handleTouchStart}
+                            on:touchend={handleTouchEnd}
+                            on:touchstart|passive
+                            on:touchend|passive
+                        >
+                            <ArticleCard
+                                {article}
+                                index={index + visibleRange.start}
+                                currentVisibleIndex={index + visibleRange.start}
+                                active={isArticleVisible(
+                                    index + visibleRange.start,
+                                )}
+                                score={article.score}
+                                isRecommended={article.isRecommendation}
+                                showNavigationButtons={false}
+                                onNavigate={handleNavigate}
+                                on:mounted={() => handleArticleView(article)}
+                            />
+                        </article>
+
+                        {#if shouldShowAd(index + visibleRange.start)}
+                            <aside
+                                class="article-container snap-start absolute w-full"
+                                style="transform: translateY({(index +
+                                    visibleRange.start +
+                                    1) *
+                                    100}vh)"
+                                aria-label="Advertisement"
+                            >
+                                <ProjectAd project={getRandomProjectAd()} />
+                            </aside>
+                        {/if}
+                    {/each}
+                </div>
+
                 {#if articlesLoading && $articles.length === 0}
                     <div
                         class="absolute inset-0 flex items-center justify-center"
@@ -527,37 +605,6 @@
                         />
                     </div>
                 {/if}
-
-                {#each $articles as article, index (article.id + "-" + index)}
-                    <article
-                        class="article-container snap-start"
-                        on:touchstart={handleTouchStart}
-                        on:touchend={handleTouchEnd}
-                        on:touchstart|passive
-                        on:touchend|passive
-                    >
-                        <ArticleCard
-                            {article}
-                            {index}
-                            currentVisibleIndex={lastVisibleIndex}
-                            active={isArticleVisible(index)}
-                            score={article.score}
-                            isRecommended={article.isRecommendation}
-                            showNavigationButtons={false}
-                            onNavigate={handleNavigate}
-                            on:mounted={() => handleArticleView(article)}
-                        />
-                    </article>
-
-                    {#if shouldShowAd(index)}
-                        <aside
-                            class="article-container snap-start"
-                            aria-label="Advertisement"
-                        >
-                            <ProjectAd project={getRandomProjectAd()} />
-                        </aside>
-                    {/if}
-                {/each}
 
                 {#if loadingBatch}
                     <div

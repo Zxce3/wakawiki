@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, afterUpdate } from "svelte";
+    import { onMount, afterUpdate, onDestroy } from "svelte";
     import type {
         WikiArticle,
         FeedbackType,
@@ -98,6 +98,16 @@
         };
     });
 
+    onDestroy(() => {
+        if (imageElement) {
+            imageElement.src = "";
+            imageElement.remove();
+        }
+        if (containerElement) {
+            containerElement.innerHTML = "";
+        }
+    });
+
     async function loadContent() {
         if (!mounted) return;
 
@@ -119,30 +129,31 @@
     }
 
     const loadImage = async () => {
-        if (!article.imageUrl || imageLoaded || !mounted) return;
+        if (!article.imageUrl || imageLoaded || !mounted || !isVisible) return;
 
-        const img = new Image();
-        const loadPromise = new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-        });
-
-        img.src = article.imageUrl;
+        // Use smaller thumbnails first
+        const thumbnailUrl =
+            article.thumbnail?.replace(/\/\d+px-/, "/300px-") ||
+            article.imageUrl;
 
         try {
-            await Promise.race([
-                loadPromise,
-                new Promise((_, reject) =>
-                    setTimeout(() => reject("timeout"), LOAD_TIMEOUT),
-                ),
-            ]);
+            const img = new Image();
+            img.loading = "lazy";
+            img.decoding = "async";
+
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = thumbnailUrl;
+            });
+
             if (mounted) {
                 imageLoaded = true;
                 imageLoading = false;
             }
         } catch (error) {
             if (mounted) {
-                loadingError = true;
+                imageError = true;
                 imageLoading = false;
             }
         }
@@ -220,12 +231,18 @@
                 const container = containerElement;
 
                 // Guard against null elements
-                if (!img || !container || !img.naturalWidth || !img.naturalHeight) {
+                if (
+                    !img ||
+                    !container ||
+                    !img.naturalWidth ||
+                    !img.naturalHeight
+                ) {
                     return;
                 }
 
                 const imgAspect = img.naturalWidth / img.naturalHeight;
-                const containerAspect = container.clientWidth / container.clientHeight;
+                const containerAspect =
+                    container.clientWidth / container.clientHeight;
 
                 img.style.cssText = `
                     opacity: 1;
@@ -236,36 +253,37 @@
                 `;
 
                 if (imgAspect > containerAspect) {
-                    img.style.width = '100%';
-                    img.style.height = 'auto';
-                    img.style.top = '50%';
-                    img.style.left = '0';
-                    img.style.transform = 'translateY(-50%)';
+                    img.style.width = "100%";
+                    img.style.height = "auto";
+                    img.style.top = "50%";
+                    img.style.left = "0";
+                    img.style.transform = "translateY(-50%)";
                 } else {
-                    img.style.height = '100%';
-                    img.style.width = 'auto';
-                    img.style.left = '50%';
-                    img.style.top = '0';
-                    img.style.transform = 'translateX(-50%)';
+                    img.style.height = "100%";
+                    img.style.width = "auto";
+                    img.style.left = "50%";
+                    img.style.top = "0";
+                    img.style.transform = "translateX(-50%)";
                 }
             } catch (error) {
-                console.warn('Error updating image layout:', error);
+                console.warn("Error updating image layout:", error);
             }
         });
     }
 
     function handleImageLoad(event: Event) {
         if (!mounted) return;
-        
+
         imageElement = event.target as HTMLImageElement;
         imageLoading = false;
         imageError = false;
-        
+
         // Wait for next frame to ensure container is mounted
         requestAnimationFrame(() => {
             if (mounted && containerElement) {
-                isSVG = article.imageUrl?.toLowerCase().endsWith('.svg') || 
-                        imageElement.src.includes('data:image/svg+xml');
+                isSVG =
+                    article.imageUrl?.toLowerCase().endsWith(".svg") ||
+                    imageElement.src.includes("data:image/svg+xml");
                 updateImageLayout();
             }
         });
