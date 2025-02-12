@@ -12,7 +12,6 @@
         articleBuffer,
     } from "$lib/store/articles";
     import { language } from "$lib/store/language";
-    $: typedLanguage = $language as SupportedLanguage;
     import ArticleCard from "$lib/components/ArticleCard.svelte";
     import LanguageSelector from "$lib/components/LanguageSelector.svelte";
     import LikedArticles from "$lib/components/LikedArticles.svelte";
@@ -33,37 +32,6 @@
 
     const INITIAL_ARTICLES_COUNT = 6;
 
-    async function loadInitialData() {
-        try {
-            const storedLanguage = await getStoredLanguage();
-            const initialLanguage =
-                storedLanguage || (getBrowserLanguage() as SupportedLanguage);
-            const articles: WikiArticle[] = [];
-
-            for (let i = 0; i < INITIAL_ARTICLES_COUNT; i++) {
-                try {
-                    const article = await fetchRandomArticle(initialLanguage);
-                    if (article) {
-                        articles.push(article);
-                    }
-                } catch (err) {
-                    console.warn(`Failed to load article ${i + 1}:`, err);
-                }
-            }
-
-            if (articles.length === 0) {
-                throw error(500, "Failed to load initial articles");
-            }
-
-            return {
-                initialLanguage,
-                initialArticles: articles,
-            };
-        } catch (err) {
-            console.error("Error loading page:", err);
-            throw error(500, "Failed to load page data");
-        }
-    }
 
     $: if ((data as any).initialLanguage && browser) {
         language.set((data as any).initialLanguage as SupportedLanguage);
@@ -95,7 +63,6 @@
     };
 
     let currentIndex = 0;
-    let container: HTMLElement;
     let showLikedArticles = false;
     let showLanguageSelector = false;
     let showRelatedArticles = false;
@@ -105,12 +72,9 @@
     let lastVisibleIndex = 0;
 
     let articlesContainer: HTMLElement;
-    let lastScrollPosition = 0;
-    const SCROLL_THRESHOLD = 0.8;
 
     let articlesLoading = false;
     let isPortrait = true;
-    let viewportHeight = 0;
 
     if (browser) {
         window.recommendationsWorker?.addEventListener("message", (event) => {
@@ -126,7 +90,6 @@
     let touchStartY = 0;
 
     // Add touch event options
-    const touchEventOptions = { passive: true };
 
     function handleTouchStart(e: TouchEvent) {
         touchStartX = e.touches[0].clientX;
@@ -176,8 +139,6 @@
     function scrollToArticle(direction: "up" | "down") {
         if (!articlesContainer) return;
 
-        const articles =
-            articlesContainer.querySelectorAll(".article-container");
         const currentScroll = articlesContainer.scrollTop;
         const windowHeight = window.innerHeight;
 
@@ -197,28 +158,7 @@
         });
     }
 
-    function handleKeydown(event: KeyboardEvent) {
-        if (event.key === "ArrowUp") {
-            event.preventDefault();
-            scrollToArticle("up");
-        } else if (event.key === "ArrowDown") {
-            event.preventDefault();
-            scrollToArticle("down");
-        }
-    }
 
-    function handleRecommendationMessage(event: MessageEvent) {
-        if (Array.isArray(event.data)) {
-            const newMap = new Map(
-                event.data.map((rec: ArticleRecommendation) => [
-                    rec.articleId,
-                    rec.score,
-                ]),
-            );
-            recommendations.set(newMap);
-            console.log("Received recommendations:", newMap);
-        }
-    }
 
     async function handleLanguageChange() {
         setLoading("language", true, "Changing language");
@@ -236,40 +176,14 @@
     const INITIAL_BATCH_SIZE = 5;
     const SCROLL_BATCH_SIZE = 3;
 
-    async function loadArticles() {
-        if (!browser || isLoading || $loadingMore) return;
 
-        const now = Date.now();
-        if (now - lastLoadTime < LOAD_COOLDOWN) return;
-
-        isLoading = true;
-        $loadingMore = true;
-
-        try {
-            const batchSize =
-                $articles.length === 0 ? INITIAL_BATCH_SIZE : SCROLL_BATCH_SIZE;
-            await loadMoreArticles(batchSize);
-            lastLoadTime = Date.now();
-        } catch (error) {
-            console.error("Error loading articles:", error);
-        } finally {
-            isLoading = false;
-            $loadingMore = false;
-        }
-    }
-
-    function checkOrientation() {
-        isPortrait = window.innerHeight > window.innerWidth;
-    }
 
     let contentReady = false;
     let initialLoadComplete = false;
 
     const INITIAL_LOAD_TIMEOUT = 3000;
-    const SCROLL_DEBOUNCE = 150;
     const LOAD_BATCH_SIZE = 3;
     let initialLoadTimer: NodeJS.Timeout;
-    let scrollDebounceTimer: NodeJS.Timeout;
     let loadingBatch = false;
 
     onMount(async () => {
@@ -360,10 +274,6 @@
     });
 
     // Add reactive statement for content readiness
-    $: isContentLoading =
-        $articleLoading.isLoading ||
-        $languageLoading.isLoading ||
-        (!initialLoadComplete && !contentReady);
 
     async function handleArticleChange(article: WikiArticle) {
         if (!browser || !window.recommendationsWorker || isLoading) return;
@@ -379,20 +289,6 @@
         ]);
     }
 
-    async function handleRecommendationClick(article: WikiArticle) {
-        if (!article.title) return;
-
-        setLoading("article", true, "Loading article");
-
-        try {
-            articles.update((existing) => [article, ...existing]);
-            currentIndex = 0;
-        } catch (error) {
-            console.error("Error loading article:", error);
-        } finally {
-            setLoading("article", false);
-        }
-    }
 
     function handleArticleView(article: WikiArticle) {
         if (browser && window.recommendationsWorker) {
@@ -475,7 +371,6 @@
         return index === lastVisibleIndex;
     }
 
-    let scrollTimeout: NodeJS.Timeout;
 
     onMount(() => {
         if (browser) {
@@ -485,27 +380,7 @@
         }
     });
 
-    let lastTapTime = 0;
-    const DOUBLE_TAP_DELAY = 300; // milliseconds
 
-    function handleTap(article: WikiArticle) {
-        const currentTime = Date.now();
-        const tapLength = currentTime - lastTapTime;
-
-        if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
-            // Double tap detected
-            likedArticles.update((set) => {
-                const newSet = new Set(set);
-                if (newSet.has(article.id)) {
-                    newSet.delete(article.id);
-                } else {
-                    newSet.add(article.id);
-                }
-                return newSet;
-            });
-        }
-        lastTapTime = currentTime;
-    }
 </script>
 
 <div class="fixed inset-0 bg-black">
