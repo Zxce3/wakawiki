@@ -16,11 +16,10 @@ export interface Project {
 
 const projects: Project[] = [
     {
-        title: "Vigilant Sniffle",
-        description: "A starter template for Jekyll and Tailwind CSS with Daisy UI",
-        githubUrl: "https://github.com/zxce3/vigilant-sniffle",
+        title: "WakaWiki",
+        description: "A modern wiki reader with AI-powered recommendations and offline capabilities",
+        githubUrl: "https://github.com/zxce3/wakawiki",
         author: "zxce3",
-        language: "Liquid"
     },
     {
         title: "Zxce3",
