@@ -4,6 +4,7 @@
     import LoadingSpinner from "./LoadingSpinner.svelte";
     import { fetchLinkedPages } from "$lib/api/wikipedia";
     import { language } from "$lib/store/language";
+    import { onMount } from 'svelte';
 
     export let isOpen = false;
     export let currentArticle: WikiArticle;
@@ -13,6 +14,7 @@
     let relatedArticles: WikiArticle[] = [];
     let loading = true;
     let error: string | null = null;
+    let modalContent: HTMLDivElement;
 
     async function handleArticleSelect(article: WikiArticle) {
         try {
@@ -69,14 +71,51 @@
         }
     }
 
+    function handleOutsideClick(event: MouseEvent) {
+        if (modalContent && !modalContent.contains(event.target as Node)) {
+            onClose();
+        }
+    }
+
+    // Close on escape key
+    function handleKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+            onClose();
+        }
+    }
+
+    onMount(() => {
+        if (isOpen) {
+            document.addEventListener('keydown', handleKeydown);
+        }
+        return () => {
+            document.removeEventListener('keydown', handleKeydown);
+        };
+    });
+
     $: if (isOpen && currentArticle) {
         loadRelatedArticles();
     }
 </script>
 
 {#if isOpen}
-    <div class="fixed inset-0 z-[300] flex items-center justify-center p-4" transition:fade>
-        <div class="bg-black/90 backdrop-blur-lg rounded-lg w-full max-w-lg max-h-[80vh] overflow-hidden shadow-xl">
+    <div 
+        class="fixed inset-0 z-[300] flex items-center justify-center p-4" 
+        transition:fade
+        role="dialog"
+        aria-modal="true"
+        aria-label="Related articles modal"
+    >
+        <button
+            class="fixed inset-0 w-full h-full bg-transparent cursor-default"
+            on:click={handleOutsideClick}
+            on:keydown={handleKeydown}
+            aria-label="Close modal background"
+        ></button>
+        <div 
+            bind:this={modalContent}
+            class="bg-black/90 backdrop-blur-lg rounded-lg w-full max-w-lg max-h-[80vh] overflow-hidden shadow-xl"
+        >
             <div class="p-4 border-b border-white/10">
                 <div class="flex justify-between items-center">
                     <h2 class="text-xl font-semibold text-white">Related Articles</h2>
