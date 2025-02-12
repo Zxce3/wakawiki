@@ -179,6 +179,7 @@ export interface FeedbackWeights extends ScoringWeights {
 
 
 export interface LocalUserInteraction {
+    [x: string]: string | number;
     articleId: string;
     type: 'view' | 'like';
     timestamp: number;
@@ -535,7 +536,7 @@ export const LANGUAGE_FLAGS = Object.fromEntries(
 
 declare global {
     interface Window {
-        recommendationsWorker: Worker;
-        articleFetcherWorker: Worker;
+        recommendationsWorker?: Worker;
+        articleFetcherWorker?: Worker;
     }
 }
