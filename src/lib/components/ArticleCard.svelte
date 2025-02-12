@@ -12,6 +12,7 @@
     } from "../store/articles";
     import FeedbackBar from "./FeedbackBar.svelte";
     import { fade } from "svelte/transition";
+    import LoadingSpinner from './LoadingSpinner.svelte';
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
@@ -326,36 +327,12 @@
     bind:this={containerElement}
     class="article-card h-full w-full flex items-center justify-center relative overflow-hidden"
     class:active
-    on:touchstart|passive
     on:touchend={handleTap}
 >
-    <div
-        class="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none select-none hidden md:flex items-center gap-2"
-        style="writing-mode: vertical-rl; text-orientation: mixed;"
-    >
-        <span class="text-sm">Swipe left for related articles</span>
-        <svg
-            class="w-4 h-4 rotate-90"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-        >
-            <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 5l7 7-7 7"
-            />
-        </svg>
-    </div>
 
     {#if !contentLoaded}
-        <div
-            class="absolute inset-0 bg-black/80 flex items-center justify-center"
-        >
-            <div
-                class="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"
-            ></div>
+        <div class="absolute inset-0 bg-black/80 flex items-center justify-center">
+            <LoadingSpinner size="md" show={true} fullscreen={false} />
         </div>
     {/if}
 
@@ -371,13 +348,12 @@
                         class="absolute inset-0 bg-neutral-800 animate-pulse flex items-center justify-center"
                         transition:fade={{ duration: 200 }}
                     >
-                        <div
-                            class="p-3 bg-black/40 backdrop-blur-sm rounded-full"
-                        >
-                            <div
-                                class="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"
-                            ></div>
-                        </div>
+                        <LoadingSpinner 
+                            size="sm" 
+                            show={true} 
+                            fullscreen={false}
+                            message="Loading image" 
+                        />
                     </div>
                 {/if}
 
@@ -677,12 +653,13 @@
     {/if}
 
     {#if recommendationsLoading}
-        <div
-            class="absolute bottom-4 right-4 z-50 bg-black/40 backdrop-blur rounded-full p-3"
-        >
-            <div
-                class="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"
-            ></div>
+        <div class="absolute bottom-4 right-4 z-50 bg-black/40 backdrop-blur rounded-full">
+            <LoadingSpinner 
+                size="sm" 
+                show={true} 
+                fullscreen={false} 
+                position="center"
+            />
         </div>
     {/if}
 </div>
