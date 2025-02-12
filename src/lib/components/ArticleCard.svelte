@@ -9,7 +9,7 @@
         recordInteraction,
         handleLike,
         likedArticles,
-    } from "../store/articles";
+    } from "$lib/store/articles";
     import FeedbackBar from "./FeedbackBar.svelte";
     import { fade } from "svelte/transition";
     import LoadingSpinner from './LoadingSpinner.svelte';
@@ -279,6 +279,8 @@
         imageElement = event.target as HTMLImageElement;
         imageLoading = false;
         imageError = false;
+        imageLoaded = true;
+        imageLoadingState = "loaded"; 
 
         // Wait for next frame to ensure container is mounted
         requestAnimationFrame(() => {
@@ -291,15 +293,10 @@
         });
     }
 
-    afterUpdate(() => {
-        if (mounted && imageElement && containerElement) {
-            updateImageLayout();
-        }
-    });
-
     function handleImageError() {
         imageError = true;
         imageLoading = false;
+        imageLoadingState = "error";
     }
 
     function handleLikeClick() {
