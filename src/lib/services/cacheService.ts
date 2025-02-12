@@ -5,7 +5,9 @@
  * categories, summaries, and images. It helps improve performance by reducing redundant API calls.
  */
 
-import { browser } from '$app/environment';
+// Replace the SvelteKit environment import with direct check
+const browser = typeof window !== 'undefined';
+
 import type { WikiArticle, SupportedLanguage } from '$lib/types';
 
 type CacheEntry<T> = {
@@ -89,20 +91,56 @@ class CacheService {
         return entry.data;
     }
 
+    async getFromCache<T>(cacheName: string, key: string): Promise<T | null> {
+        if (!browser) return null;
+        try {
+            const cache = await caches.open(cacheName);
+            const response = await cache.match(key);
+            if (response) {
+                const data = await response.json();
+                console.debug(`Cache hit: ${cacheName}/${key}`);
+                return data;
+            }
+            console.debug(`Cache miss: ${cacheName}/${key}`);
+        } catch (error) {
+            console.warn('Cache fetch failed:', error);
+        }
+        return null;
+    }
+
+    async addToCache(cacheName: string, key: string, data: any): Promise<void> {
+        if (!browser) return;
+        try {
+            const cache = await caches.open(cacheName);
+            const response = new Response(JSON.stringify(data));
+            await cache.put(key, response);
+            console.debug(`Cached: ${cacheName}/${key}`);
+        } catch (error) {
+            console.warn('Cache save failed:', error);
+        }
+    }
+
     /**
      * Caches an article.
      */
-    setArticle(article: WikiArticle, language: SupportedLanguage) {
+    async setArticle(article: WikiArticle, language: SupportedLanguage): Promise<void> {
         const key = `${language}-${article.id}`;
+        // Set in memory cache
         this.set(this.articleCache, key, article, language);
+        // Set in PWA cache
+        await this.addToCache('articles-cache-v1', key, article);
     }
 
     /**
      * Retrieves a cached article.
      */
-    getArticle(id: string, language: SupportedLanguage): WikiArticle | null {
-        const key = `${language}-${id}`;
-        return this.get(this.articleCache, key, this.ARTICLE_TTL);
+    async getArticle(id: string, language: SupportedLanguage): Promise<WikiArticle | null> {
+        // Try memory cache first
+        const memoryCache = this.get(this.articleCache, `${language}-${id}`, this.ARTICLE_TTL);
+        if (memoryCache) return memoryCache;
+
+        // Try PWA cache
+        return await this.getFromCache('articles-cache-v1', `${language}-${id}`);
     }
 
     /**

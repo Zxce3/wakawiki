@@ -26,6 +26,11 @@ const STORAGE_KEYS = {
     LAST_CLEANUP: 'wakawiki:last_cleanup'
 } as const;
 
+const OFFLINE_KEYS = {
+    OFFLINE_ARTICLES: 'wakawiki:offline_articles',
+    LAST_SYNC: 'wakawiki:last_sync'
+} as const;
+
 const STORAGE_VERSION = '1.0';
 const CLEANUP_INTERVAL = 7 * 24 * 60 * 60 * 1000; // One week
 
@@ -279,4 +284,36 @@ export function getBrowserLanguage(): SupportedLanguage {
     return supportedLanguages.includes(browserLang as SupportedLanguage)
         ? browserLang as SupportedLanguage
         : 'en';
+}
+
+/**
+ * Stores articles for offline access
+ */
+export async function storeOfflineArticle(article: WikiArticle): Promise<void> {
+    const offlineArticles = getStorage<WikiArticle[]>(OFFLINE_KEYS.OFFLINE_ARTICLES, []);
+    const existingIndex = offlineArticles.findIndex(a => a.id === article.id);
+    
+    if (existingIndex === -1) {
+        offlineArticles.push(article);
+    } else {
+        offlineArticles[existingIndex] = article;
+    }
+    
+    setStorage(OFFLINE_KEYS.OFFLINE_ARTICLES, offlineArticles);
+}
+
+/**
+ * Retrieves offline articles
+ */
+export async function getOfflineArticles(): Promise<WikiArticle[]> {
+    return getStorage<WikiArticle[]>(OFFLINE_KEYS.OFFLINE_ARTICLES, []);
+}
+
+/**
+ * Checks if we have offline articles available
+ */
+export function hasOfflineContent(): boolean {
+    if (!browser) return false;
+    const articles = getStorage<WikiArticle[]>(OFFLINE_KEYS.OFFLINE_ARTICLES, []);
+    return articles.length > 0;
 }
