@@ -13,6 +13,7 @@
     import FeedbackBar from "./FeedbackBar.svelte";
     import { fade } from "svelte/transition";
     import LoadingSpinner from './LoadingSpinner.svelte';
+    import { storeOfflineArticle } from '$lib/storage/utils';
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
@@ -85,10 +86,20 @@
         lastTapTime = currentTime;
     }
 
+    // Add offline state
+    let isOffline = !navigator.onLine;
+
     onMount(() => {
         mounted = true;
         if (active) {
             loadContent();
+        }
+        window.addEventListener('online', () => isOffline = false);
+        window.addEventListener('offline', () => isOffline = true);
+        
+        // Store article for offline access
+        if (article) {
+            storeOfflineArticle(article).catch(console.error);
         }
         return () => {
             clearTimeout(loadTimeout);
@@ -137,6 +148,18 @@
             article.imageUrl;
 
         try {
+            if (isOffline) {
+                // Try to load from cache first
+                const cache = await caches.open('images-cache-v1');
+                const response = await cache.match(thumbnailUrl);
+                if (response) {
+                    const blob = await response.blob();
+                    article.imageUrl = URL.createObjectURL(blob);
+                } else {
+                    throw new Error('Image not in cache');
+                }
+            }
+
             const img = new Image();
             img.loading = "lazy";
             img.decoding = "async";
@@ -563,14 +586,15 @@
         </button>
 
         <a
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={isOffline ? undefined : article.url}
             class="flex flex-col items-center group"
-            aria-label="Read article"
+            class:pointer-events-none={isOffline}
+            aria-label={isOffline ? "Not available offline" : "Read article"}
+            title={isOffline ? "Not available offline" : "Read article"}
         >
             <div
                 class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
+                class:opacity-50={isOffline}
             >
                 <svg
                     class="w-6 h-6 @md:w-8 @md:h-8 text-white"
@@ -578,18 +602,29 @@
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                 >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10
-                           a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
+                    {#if isOffline}
+                        <!-- Offline icon -->
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238"
+                        />
+                    {:else}
+                        <!-- Original read icon -->
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10
+                               a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
+                    {/if}
                 </svg>
             </div>
-            <span class="text-xs @md:text-sm mt-1 font-medium text-white/90"
-                >Read</span
-            >
+            <span class="text-xs @md:text-sm mt-1 font-medium text-white/90">
+                {isOffline ? "Offline" : "Read"}
+            </span>
         </a>
     </div>
 

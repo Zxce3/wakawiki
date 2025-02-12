@@ -21,7 +21,7 @@
     import { languageLoading, setLoading } from "$lib/store/loading";
     import LoadingSpinner from "$lib/components/LoadingSpinner.svelte";
     import { fade } from "svelte/transition";
-    import { getStoredLanguage } from "$lib/storage/utils";
+    import { getStoredLanguage, hasOfflineContent, getOfflineArticles } from "$lib/storage/utils";
     import RelatedArticles from "$lib/components/RelatedArticles.svelte";
     import { LANGUAGE_FLAGS } from "$lib/types";
     import Header from "$lib/components/Header.svelte";
@@ -161,6 +161,34 @@
     const LOAD_BATCH_SIZE = 3;
     let initialLoadTimer: NodeJS.Timeout;
     let loadingBatch = false;
+
+    let isOffline = !navigator.onLine;
+    let showOfflineMessage = false;
+
+    // Add offline detection
+    onMount(() => {
+        window.addEventListener('online', handleOnlineStatus);
+        window.addEventListener('offline', handleOnlineStatus);
+        return () => {
+            window.removeEventListener('online', handleOnlineStatus);
+            window.removeEventListener('offline', handleOnlineStatus);
+        };
+    });
+
+    function handleOnlineStatus() {
+        isOffline = !navigator.onLine;
+        if (isOffline) {
+            showOfflineMessage = true;
+            loadOfflineContent();
+        }
+    }
+
+    async function loadOfflineContent() {
+        if (hasOfflineContent()) {
+            const offlineArticles = await getOfflineArticles();
+            articles.set(offlineArticles);
+        }
+    }
 
     onMount(async () => {
         if (browser) {
@@ -554,6 +582,14 @@
         </div>
     {/if}
 </div>
+
+{#if showOfflineMessage}
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-yellow-500/80 backdrop-blur-sm rounded-full text-black text-sm font-medium" 
+         transition:fade={{ duration: 200 }}>
+        You're offline - showing saved articles
+        <button class="ml-2 opacity-50 hover:opacity-100" on:click={() => showOfflineMessage = false}>✕</button>
+    </div>
+{/if}
 
 {#if showRelatedArticles}
     <div class="fixed inset-0 z-[200] bg-black/80">
