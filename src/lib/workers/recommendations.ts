@@ -20,6 +20,7 @@ import {
     searchByCategory as searchByCategoryApi,
     getRelatedCategories
 } from '$lib/api/wikipedia';
+import { cacheService } from '$lib/services/cacheService';
 
 const recentRecommendations = new Map<string, number>();
 const RECOMMENDATION_COOLDOWN = 1000 * 60 * 30; // Cooldown period for recommendations
@@ -143,21 +144,70 @@ function deduplicateInteractions(interactions: LocalUserInteraction[]): LocalUse
 }
 
 /**
- * Generates article recommendations based on user interactions.
+ * Enhanced recommendation generation with smart cache utilization
  */
 async function generateRecommendations(interactions: LocalUserInteraction[]): Promise<ArticleRecommendation[]> {
     try {
         const language = interactions[0].language;
+        const userId = String(interactions[0].userId || 'anonymous');
+        const cacheKey = `${userId}-${Date.now()}`;
 
-        const recommendations = await generateRecommendationsFromInteractions(interactions);
+        // Try to get from various caches
+        const [cachedRecommendations, fallbackCache] = await Promise.all([
+            cacheService.getRecommendations(cacheKey, language),
+            cacheService.getRecommendations('fallback-' + language, language)
+        ]);
+
+        // Use cached recommendations if they're fresh and relevant
+        if (Array.isArray(cachedRecommendations) && cachedRecommendations.length >= 5) {
+            const stillRelevant = cachedRecommendations.some(rec => 
+                interactions.some(i => i.articleId === rec.articleId)
+            );
+            
+            if (stillRelevant) {
+                console.log('Using relevant cached recommendations');
+                return cachedRecommendations;
+            }
+        }
+
+        // Generate new recommendations
+        let recommendations = await generateRecommendationsFromInteractions(interactions);
+        
+        // If we don't have enough recommendations, mix in some cached ones
+        if (recommendations.length < 5 && fallbackCache) {
+            const uniqueRecommendations = new Map(
+                recommendations.map(r => [r.articleId, r])
+            );
+
+            // Add relevant fallback recommendations
+            fallbackCache.forEach(rec => {
+                if (!uniqueRecommendations.has(rec.articleId)) {
+                    uniqueRecommendations.set(rec.articleId, {
+                        ...rec,
+                        score: rec.score * 0.8, // Reduce score for cached recommendations
+                        reason: 'You might also like this'
+                    });
+                }
+            });
+
+            recommendations = Array.from(uniqueRecommendations.values());
+        }
 
         // Sort and limit recommendations
-        return recommendations
+        const sortedRecs = recommendations
             .sort((a, b) => b.score - a.score)
             .slice(0, 10);
+
+        // Cache both user-specific and fallback recommendations
+        await Promise.all([
+            cacheService.setRecommendations(cacheKey, sortedRecs, language),
+            cacheService.setRecommendations('fallback-' + language, sortedRecs, language)
+        ]);
+
+        return sortedRecs;
     } catch (error) {
         console.error('Error in generateRecommendations:', error);
-        return [];
+        return getFallbackRecommendations(interactions[0].language);
     }
 }
 
@@ -185,7 +235,7 @@ function getRelevantCategories(categories: string[]): string[] {
 }
 
 /**
- * Generates recommendations from user interactions.
+ * Enhanced recommendation generation with better error handling
  */
 async function generateRecommendationsFromInteractions(interactions: LocalUserInteraction[]): Promise<ArticleRecommendation[]> {
     if (interactions.length === 0) return [];
@@ -194,50 +244,46 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
     const processedArticles = new Set<string>();
     let errorCount = 0;
 
-    // Process top 5 interactions
+    // Process top 5 recent interactions
     for (const interaction of interactions.slice(0, 5)) {
         try {
-            const page = await wiki.page(interaction.articleId).catch(async (error) => {
-                console.warn(`Failed to fetch page ${interaction.articleId}:`, error);
-                errorCount++;
-                return null;
-            });
-
-            if (!page) continue;
-
-            const categories = await page.categories().catch(error => {
-                console.warn(`Failed to fetch categories for ${interaction.articleId}:`, error);
-                return [];
-            });
-
-            const relevantCategories = getRelevantCategories(categories);
+            // Try to get categories from cache first
+            const cachedCategories = await cacheService.getCategories(interaction.articleId, interaction.language);
             
-            if (relevantCategories.length === 0) {
-                console.log('No relevant categories found for:', interaction.articleId);
-                continue;
+            let categories: string[] = [];
+            if (cachedCategories) {
+                categories = cachedCategories;
+            } else {
+                try {
+                    // Fetch page info directly using the API to avoid CORS
+                    const page = await wiki.page(interaction.articleId);
+                    categories = await page.categories().catch(() => []);
+                    if (categories.length > 0) {
+                        await cacheService.setCategories(interaction.articleId, categories, interaction.language);
+                    }
+                } catch (error) {
+                    console.warn(`Failed to fetch categories for ${interaction.articleId}:`, error);
+                    continue;
+                }
             }
 
-            console.log('Processing article:', interaction.articleId);
-            console.log('Using categories:', relevantCategories);
+            const relevantCategories = getRelevantCategories(categories);
+            if (relevantCategories.length === 0) continue;
 
+            // Process each category
             for (const category of relevantCategories) {
                 if (recommendations.size >= 10) break;
 
                 try {
                     const categoryArticles = await searchByCategoryApi(category, interaction.language, 2)
-                        .catch(error => {
-                            console.warn(`Failed to search category ${category}:`, error);
-                            return [];
-                        });
+                        .catch(() => []);
 
                     for (const article of categoryArticles) {
-                        if (!article || processedArticles.has(article.id)) continue;
-                        if (article.id === interaction.articleId) continue;
-
-                        if (!isValidArticle(article)) continue;
+                        if (!article || processedArticles.has(article.id) || 
+                            article.id === interaction.articleId || 
+                            !isValidArticle(article)) continue;
 
                         processedArticles.add(article.id);
-
                         recommendations.add({
                             articleId: article.id,
                             score: interaction.type === 'like' ? 0.9 : 0.7,
@@ -257,19 +303,19 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
                 } catch (error) {
                     console.warn(`Error processing category ${category}:`, error);
                     errorCount++;
-                    continue;
                 }
             }
         } catch (error) {
-            console.warn('Error processing article:', error);
+            console.warn('Error processing interaction:', error);
             errorCount++;
-            continue;
         }
+
+        // Break early if we have enough recommendations
+        if (recommendations.size >= 10) break;
     }
 
-    // If we encountered too many errors or have too few recommendations, get fallback recommendations
+    // If we have too many errors or too few recommendations, get fallbacks
     if (errorCount > 2 || recommendations.size < 3) {
-        console.log('Using fallback recommendations due to errors or insufficient results');
         const fallbackRecs = await getFallbackRecommendations(interactions[0].language);
         for (const rec of fallbackRecs) {
             if (recommendations.size >= 10) break;
@@ -279,7 +325,6 @@ async function generateRecommendationsFromInteractions(interactions: LocalUserIn
         }
     }
 
-    console.log('Generated recommendations count:', recommendations.size);
     return Array.from(recommendations);
 }
 
@@ -431,25 +476,69 @@ function calculateArticlePopularity(result: any): number | undefined {
 }
 
 /**
- * Provides fallback recommendations if not enough recommendations are generated.
+ * Enhanced fallback recommendations
  */
 async function getFallbackRecommendations(language: SupportedLanguage): Promise<ArticleRecommendation[]> {
     try {
-        const articles = await fetchRandomArticlesWithImages(language, 5, new Set());
+        // Try to get cached fallbacks first
+        const cached = await cacheService.getRecommendations('fallback-' + language, language);
+        if (Array.isArray(cached) && cached.length >= 5) {
+            return cached;
+        }
 
-        return articles.map(article => ({
-            articleId: article.id,
-            score: 0.5,
-            metadata: {
-                title: article.title,
-                categories: article.categories || [],
-                excerpt: article.excerpt || '',
-                thumbnail: article.thumbnail,
-                readingTime: estimateReadingTime(article.content || ''),
-                popularity: 0.5
-            },
-            reason: 'You might find this interesting'
-        }));
+        // Get a mix of different types of articles
+        const [popularArticles, featuredArticles, randomArticles] = await Promise.all([
+            fetchRandomArticlesWithImages(language, 3, new Set()),
+            searchByCategoryApi('Featured_articles', language, 3),
+            fetchRandomArticlesWithImages(language, 4, new Set())
+        ]);
+
+        const recommendations: ArticleRecommendation[] = [
+            ...popularArticles.map(article => ({
+                articleId: article.id,
+                score: 0.7,
+                metadata: {
+                    title: article.title,
+                    categories: article.categories || [],
+                    excerpt: article.excerpt || '',
+                    thumbnail: article.thumbnail,
+                    readingTime: estimateReadingTime(article.content || ''),
+                    popularity: 0.8
+                },
+                reason: 'Popular article you might enjoy'
+            })),
+            ...featuredArticles.map(article => ({
+                articleId: article.id,
+                score: 0.8,
+                metadata: {
+                    title: article.title,
+                    categories: article.categories || [],
+                    excerpt: article.excerpt || '',
+                    thumbnail: article.thumbnail,
+                    readingTime: estimateReadingTime(article.content || ''),
+                    popularity: 0.9
+                },
+                reason: 'Featured article'
+            })),
+            ...randomArticles.map(article => ({
+                articleId: article.id,
+                score: 0.6,
+                metadata: {
+                    title: article.title,
+                    categories: article.categories || [],
+                    excerpt: article.excerpt || '',
+                    thumbnail: article.thumbnail,
+                    readingTime: estimateReadingTime(article.content || ''),
+                    popularity: 0.5
+                },
+                reason: 'You might find this interesting'
+            }))
+        ];
+
+        // Cache these fallback recommendations
+        await cacheService.setRecommendations('fallback-' + language, recommendations, language);
+
+        return recommendations;
     } catch (error) {
         console.error('Error getting fallback recommendations:', error);
         return [];
@@ -559,6 +648,14 @@ async function generateCategoryBasedRecommendations(
     categories: string[],
     language: SupportedLanguage
 ): Promise<ArticleRecommendation[]> {
+    const cacheKey = `categories-${categories.join('-')}`;
+    
+    // Try to get from cache first
+    const cached = await cacheService.getRecommendations(cacheKey, language);
+    if (cached && cached.length > 0) {
+        return cached;
+    }
+
     const recommendations = new Set<ArticleRecommendation>();
     const processedArticles = new Set<string>();
 
@@ -592,9 +689,14 @@ async function generateCategoryBasedRecommendations(
         }
     }
 
-    return Array.from(recommendations)
+    const sortedRecs = Array.from(recommendations)
         .sort((a, b) => b.score - a.score)
         .slice(0, 10);
+
+    // Cache the results
+    await cacheService.setRecommendations(cacheKey, sortedRecs, language);
+
+    return sortedRecs;
 }
 
 /**

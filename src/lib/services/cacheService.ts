@@ -8,7 +8,7 @@
 // Replace the SvelteKit environment import with direct check
 const browser = typeof window !== 'undefined';
 
-import type { WikiArticle, SupportedLanguage } from '$lib/types';
+import type { WikiArticle, SupportedLanguage, ArticleRecommendation } from '$lib/types';
 
 type CacheEntry<T> = {
     data: T;
@@ -22,11 +22,13 @@ class CacheService {
     private categoryCache = new Map<string, CacheEntry<string[]>>();
     private summaryCache = new Map<string, CacheEntry<any>>();
     private imageCache = new Map<string, CacheEntry<{ imageUrl?: string; thumbnail?: string }>>();
+    private recommendationCache = new Map<string, CacheEntry<ArticleRecommendation[]>>();
     
     private readonly ARTICLE_TTL = 30 * 60 * 1000; // 30 minutes
     private readonly CATEGORY_TTL = 60 * 60 * 1000; // 1 hour
     private readonly SUMMARY_TTL = 15 * 60 * 1000; // 15 minutes
     private readonly IMAGE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+    private readonly RECOMMENDATION_TTL = 15 * 60 * 1000; // 15 minutes
 
     private currentLanguage: SupportedLanguage = 'en';
     
@@ -46,6 +48,7 @@ class CacheService {
             this.categoryCache.clear();
             this.summaryCache.clear();
             this.imageCache.clear();
+            this.recommendationCache.clear();
             this.currentLanguage = newLanguage;
         }
     }
@@ -58,6 +61,7 @@ class CacheService {
         this.categoryCache.clear();
         this.summaryCache.clear();
         this.imageCache.clear();
+        this.recommendationCache.clear();
         this.currentLanguage = 'en'; // Reset to default
     }
 
@@ -178,15 +182,101 @@ class CacheService {
     /**
      * Retrieves cached images for an article.
      */
-    getArticleImages(articleId: string, language: SupportedLanguage) {
-        return this.get(this.imageCache, `${language}-${articleId}`, this.IMAGE_TTL);
+    async getArticleImages(articleId: string, language: SupportedLanguage) {
+        const key = `${language}-${articleId}`;
+        
+        // Try memory cache first
+        const memCache = this.get(this.imageCache, key, this.IMAGE_TTL);
+        if (memCache) return memCache;
+
+        // Try PWA cache
+        const pwaCache = await this.getFromCache('images-cache-v1', key);
+        if (pwaCache) {
+            // Restore to memory cache
+            this.set(this.imageCache, key, pwaCache, language);
+            return pwaCache;
+        }
+
+        return null;
     }
 
     /**
      * Caches images for an article.
      */
-    setArticleImages(articleId: string, images: { imageUrl?: string; thumbnail?: string }, language: SupportedLanguage) {
-        this.set(this.imageCache, `${language}-${articleId}`, images, language);
+    async setArticleImages(
+        articleId: string, 
+        images: { imageUrl?: string; thumbnail?: string }, 
+        language: SupportedLanguage
+    ): Promise<void> {
+        const key = `${language}-${articleId}`;
+        
+        try {
+            // Cache in memory
+            this.set(this.imageCache, key, images, language);
+
+            // Cache in PWA cache
+            if (images.imageUrl) {
+                await this.precacheImage(images.imageUrl);
+            }
+            if (images.thumbnail) {
+                await this.precacheImage(images.thumbnail);
+            }
+
+            // Also cache in IndexedDB for offline access
+            await this.addToCache('images-cache-v1', key, images);
+        } catch (error) {
+            console.warn('Failed to cache images:', error);
+        }
+    }
+
+    /**
+     * Pre-cache an image using the Cache API
+     */
+    public async precacheImage(url: string): Promise<void> {
+        if (!browser) return;
+
+        try {
+            const cache = await caches.open('wakawiki-images-v1');
+            const response = await fetch(url, {
+                mode: 'cors',
+                credentials: 'omit',
+                headers: {
+                    'Accept': 'image/*'
+                }
+            });
+            
+            if (response.ok) {
+                await cache.put(url, response);
+                console.debug(`Image cached: ${url}`);
+            }
+        } catch (error) {
+            console.warn(`Failed to precache image: ${url}`, error);
+        }
+    }
+
+    /**
+     * Caches recommendations for a user
+     */
+    // Add these public methods
+    public async setRecommendations(key: string, recommendations: ArticleRecommendation[], language: SupportedLanguage): Promise<void> {
+        const cacheKey = `recommendations-${language}-${key}`;
+        this.set(this.recommendationCache, cacheKey, recommendations, language);
+        // Also cache in PWA cache
+        await this.addToCache('recommendations-cache-v1', cacheKey, recommendations);
+    }
+    /**
+     * Retrieves cached recommendations for a user
+     */
+
+    public async getRecommendations(key: string, language: SupportedLanguage): Promise<ArticleRecommendation[] | null> {
+        const cacheKey = `recommendations-${language}-${key}`;
+        
+        // Try memory cache first
+        const memCache = this.get(this.recommendationCache, cacheKey, this.RECOMMENDATION_TTL);
+        if (memCache) return memCache;
+
+        // Try PWA cache
+        return await this.getFromCache('recommendations-cache-v1', cacheKey);
     }
 
     /**
@@ -199,7 +289,8 @@ class CacheService {
             { cache: this.articleCache, ttl: this.ARTICLE_TTL },
             { cache: this.categoryCache, ttl: this.CATEGORY_TTL },
             { cache: this.summaryCache, ttl: this.SUMMARY_TTL },
-            { cache: this.imageCache, ttl: this.IMAGE_TTL }
+            { cache: this.imageCache, ttl: this.IMAGE_TTL },
+            { cache: this.recommendationCache, ttl: this.RECOMMENDATION_TTL }
         ].forEach(({ cache, ttl }) => {
             for (const [key, entry] of cache.entries()) {
                 if (now - entry.timestamp > ttl) {

@@ -127,31 +127,40 @@ async function fetchImagesSafely(page: any): Promise<string[]> {
             page.summary()
         ]);
 
-        const validImages = [];
+        const validImages = new Set<string>();
 
-        // Add thumbnail from summary if available
+        // Process thumbnail from summary
         if (summary?.thumbnail?.source) {
-            validImages.push(summary.thumbnail.source);
+            validImages.add(summary.thumbnail.source);
+            // Pre-cache the thumbnail
+            await cacheService.precacheImage(summary.thumbnail.source);
         }
 
-        // Add other valid images
+        // Process other images
         if (images?.length) {
-            const filteredImages = images.filter((img: any) => {
-                const url = img.url || '';
-                return (
-                    url.match(/\.(jpg|jpeg|png|gif)$/i) &&
-                    !url.includes('Commons-logo') &&
-                    !url.includes('Wiki-logo') &&
-                    !url.includes('Icon') &&
-                    !url.endsWith('.svg') &&
-                    !url.includes('Placeholder') &&
-                    !url.includes('Symbol')
-                );
-            }).map((img: any) => img.url);
-            validImages.push(...filteredImages);
+            const filteredImages = images
+                .filter((img: any) => {
+                    const url = img.url || '';
+                    return (
+                        url.match(/\.(jpg|jpeg|png|gif)$/i) &&
+                        !url.includes('Commons-logo') &&
+                        !url.includes('Wiki-logo') &&
+                        !url.includes('Icon') &&
+                        !url.endsWith('.svg') &&
+                        !url.includes('Placeholder') &&
+                        !url.includes('Symbol')
+                    );
+                })
+                .map((img: any) => img.url);
+
+            // Add and pre-cache filtered images
+            for (const imgUrl of filteredImages) {
+                validImages.add(imgUrl);
+                await cacheService.precacheImage(imgUrl);
+            }
         }
 
-        return [...new Set(validImages)]; // Remove duplicates
+        return Array.from(validImages);
     } catch (error) {
         console.warn('Error fetching images:', error);
         return [];
@@ -251,8 +260,14 @@ export async function fetchRandomArticle(language: SupportedLanguage): Promise<W
  */
 export async function fetchArticleImages(articleId: string, language: SupportedLanguage): Promise<{ imageUrl?: string; thumbnail?: string }> {
     try {
-        const cached = cacheService.getArticleImages(articleId, language);
-        if (cached) return cached;
+        // Get cached images first
+        const cached = await cacheService.getArticleImages(articleId, language) as { imageUrl?: string; thumbnail?: string } | null;
+        if (cached) {
+            return {
+                imageUrl: cached.imageUrl,
+                thumbnail: cached.thumbnail
+            };
+        }
 
         const page = await wiki.page(articleId);
         const summary = await page.summary();
@@ -262,11 +277,17 @@ export async function fetchArticleImages(articleId: string, language: SupportedL
             thumbnail: summary.thumbnail?.source
         };
 
-        cacheService.setArticleImages(articleId, images, language);
+        if (images.imageUrl || images.thumbnail) {
+            await cacheService.setArticleImages(articleId, images, language);
+        }
+
         return images;
     } catch (error) {
         console.error('Error fetching article images:', error);
-        return {};
+        return {
+            imageUrl: undefined,
+            thumbnail: undefined
+        };
     }
 }
 
@@ -634,8 +655,9 @@ export async function fetchArticleCategories(pageId: string, language: Supported
     return allCategories;
 }
 
+
 /**
- * Searches for articles within a specific category
+ * Searches for articles within a category with CORS handling
  */
 export async function searchByCategory(category: string, language: SupportedLanguage, limit = 10): Promise<WikiArticle[]> {
     const params = new URLSearchParams({
@@ -645,8 +667,8 @@ export async function searchByCategory(category: string, language: SupportedLang
         cmtitle: `Category:${category}`,
         cmlimit: String(limit),
         cmtype: 'page',
-        cmnamespace: '0', 
-        origin: '*',
+        cmnamespace: '0',
+        origin: '*', // This is important for CORS
         prop: 'extracts|pageimages|info',
         explimit: String(limit),
         exintro: '1',
@@ -654,37 +676,57 @@ export async function searchByCategory(category: string, language: SupportedLang
     });
 
     const endpoint = `https://${language}.wikipedia.org/w/api.php`;
-    const response = await fetch(`${endpoint}?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch category members');
+    
+    try {
+        const response = await fetch(`${endpoint}?${params}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            }
+        });
 
-    const data = await response.json();
-    const articles: WikiArticle[] = [];
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-    if (data.query?.categorymembers) {
-        for (const member of data.query.categorymembers) {
-            try {
-                const page = await wiki.page(member.title);
-                const summary = await page.summary();
-                articles.push({
-                  id: String(summary.pageid),
-                  title: summary.title,
-                  excerpt: summary.extract || '',
-                  imageUrl: summary.thumbnail?.source,
-                  thumbnail: summary.thumbnail?.source,
-                  language,
-                  url: summary.content_urls?.desktop?.page,
-                  content: summary.extract || '',
-                  categories: [category],
-                  lastModified: Date.now().toString(),
-                  imagePending: false
-                });
-            } catch (error) {
-                console.warn(`Error fetching article ${member.title}:`, error);
+        const data = await response.json();
+        const articles: WikiArticle[] = [];
+
+        if (data.query?.categorymembers) {
+            for (const member of data.query.categorymembers) {
+                try {
+                    // Use summary endpoint which has better CORS support
+                    const summaryUrl = `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(member.title)}`;
+                    const summaryResponse = await fetch(summaryUrl);
+                    const summary = await summaryResponse.json();
+
+                    if (summary && summary.title) {
+                        articles.push({
+                            id: String(summary.pageid),
+                            title: summary.title,
+                            excerpt: summary.extract || '',
+                            imageUrl: summary.thumbnail?.source,
+                            thumbnail: summary.thumbnail?.source,
+                            language,
+                            url: summary.content_urls?.desktop?.page,
+                            content: summary.extract || '',
+                            categories: [category],
+                            lastModified: Date.now().toString(),
+                            imagePending: false
+                        });
+                    }
+                } catch (error) {
+                    console.warn(`Error fetching article ${member.title}:`, error);
+                }
             }
         }
-    }
 
-    return articles;
+        return articles;
+    } catch (error) {
+        console.error('Error searching category:', error);
+        return [];
+    }
 }
 
 /**
