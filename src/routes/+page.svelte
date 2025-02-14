@@ -29,6 +29,7 @@
     import Header from "$lib/components/Header.svelte";
     import SvelteSeo from "$lib/components/SvelteSeo.svelte";
     import { goto } from "$app/navigation";
+    import { WifiOff, Wifi, X } from 'lucide-svelte';  // Add Lucide imports
 
 
     // Add these constants for virtual scrolling
@@ -632,18 +633,24 @@
 </div>
 
 {#if showOfflineMessage}
-    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-yellow-500/80 backdrop-blur-sm rounded-full text-black text-sm font-medium" 
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-yellow-500/80 backdrop-blur-sm rounded-full text-black text-sm font-medium flex items-center gap-2" 
          transition:fade={{ duration: 200 }}>
+        <WifiOff class="w-4 h-4" />
         You're offline - showing saved articles
-        <button class="ml-2 opacity-50 hover:opacity-100" on:click={() => showOfflineMessage = false}>✕</button>
+        <button class="opacity-50 hover:opacity-100" on:click={() => showOfflineMessage = false}>
+            <X class="w-4 h-4" />
+        </button>
     </div>
 {/if}
 
 {#if showOnlineMessage}
-    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-green-500/80 backdrop-blur-sm rounded-full text-black text-sm font-medium" 
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-green-500/80 backdrop-blur-sm rounded-full text-black text-sm font-medium flex items-center gap-2" 
          transition:fade={{ duration: 200 }}>
+        <Wifi class="w-4 h-4" />
         You're back online - refreshing content
-        <button class="ml-2 opacity-50 hover:opacity-100" on:click={() => showOnlineMessage = false}>✕</button>
+        <button class="opacity-50 hover:opacity-100" on:click={() => showOnlineMessage = false}>
+            <X class="w-4 h-4" />
+        </button>
     </div>
 {/if}
 

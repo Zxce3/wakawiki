@@ -13,9 +13,10 @@
     } from "$lib/store/articles";
     import FeedbackBar from "./FeedbackBar.svelte";
     import { fade } from "svelte/transition";
-    import LoadingSpinner from './LoadingSpinner.svelte';
-    import { storeOfflineArticle } from '$lib/storage/utils';
-    import ShareArticle from './ShareArticle.svelte';
+    import LoadingSpinner from "./LoadingSpinner.svelte";
+    import { storeOfflineArticle } from "$lib/storage/utils";
+    import ShareArticle from "./ShareArticle.svelte";
+    import { Heart, Share2, ExternalLink, ArrowUp, ArrowDown, Wifi, WifiOff } from 'lucide-svelte';
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
@@ -23,7 +24,8 @@
     export let showNavigationButtons = true;
     export let onNavigate: ((direction: "up" | "down") => void) | undefined =
         undefined;
-    export let recommendations: ArticleRecommendation[] = [];
+    // svelte-ignore export_let_unused
+        export let recommendations: ArticleRecommendation[] = [];
     export const onRecommendationClick:
         | ((rec: ArticleRecommendation) => void)
         | undefined = undefined;
@@ -32,7 +34,6 @@
     export let currentVisibleIndex: number;
 
     $: isLiked = $likedArticles.has(article.id);
-    $: showRecommendations = active && recommendations.length > 0;
     $: shouldLoadImage = index <= currentVisibleIndex + 1;
     $: isVisible = index === currentVisibleIndex;
 
@@ -41,7 +42,6 @@
     let containerElement: HTMLDivElement;
     let imageError = false;
     let hasRecordedView = false;
-    let imagesFetched = false;
 
     let imageLoaded = false;
     let contentLoaded = false;
@@ -59,7 +59,6 @@
     let isSVG = false;
 
     // Add touch event options
-    const touchEventOptions = { passive: true };
 
     // Add this function for gradient animation
     function getRandomGradient() {
@@ -71,8 +70,6 @@
         ];
         return gradients[Math.floor(Math.random() * gradients.length)];
     }
-
-    let fallbackGradient = getRandomGradient();
 
     let lastTapTime = 0;
     const DOUBLE_TAP_DELAY = 300;
@@ -96,6 +93,11 @@
     let readStartTime = 0;
     let contentHeight = 0;
 
+    // Add new variables for fallback loading
+    let showFallbackLoading = false;
+    let loadingTimeout: NodeJS.Timeout;
+    const FALLBACK_TIMEOUT = 2000; // Show fallback after 2 seconds
+
     onMount(() => {
         mounted = true;
         if (active) {
@@ -107,15 +109,16 @@
                 contentHeight = containerElement.scrollHeight;
             }
         }
-        window.addEventListener('online', () => isOffline = false);
-        window.addEventListener('offline', () => isOffline = true);
-        
+        window.addEventListener("online", () => (isOffline = false));
+        window.addEventListener("offline", () => (isOffline = true));
+
         // Store article for offline access
         if (article) {
             storeOfflineArticle(article).catch(console.error);
         }
         return () => {
             clearTimeout(loadTimeout);
+            clearTimeout(loadingTimeout);
             mounted = false;
         };
     });
@@ -132,6 +135,13 @@
 
     async function loadContent() {
         if (!mounted) return;
+
+        // Start fallback timer
+        loadingTimeout = setTimeout(() => {
+            if (!contentLoaded) {
+                showFallbackLoading = true;
+            }
+        }, FALLBACK_TIMEOUT);
 
         loadTimeout = setTimeout(() => {
             if (!imageLoaded) {
@@ -163,13 +173,13 @@
         try {
             if (isOffline) {
                 // Try to load from cache first
-                const cache = await caches.open('images-cache-v1');
+                const cache = await caches.open("images-cache-v1");
                 const response = await cache.match(thumbnailUrl);
                 if (response) {
                     const blob = await response.blob();
                     article.imageUrl = URL.createObjectURL(blob);
                 } else {
-                    throw new Error('Image not in cache');
+                    throw new Error("Image not in cache");
                 }
             }
 
@@ -250,6 +260,7 @@
     }
 
     $: if (isVisible && !contentLoaded && mounted) {
+        showFallbackLoading = false;
         loadContent();
         contentLoaded = true;
     }
@@ -316,7 +327,7 @@
         imageLoading = false;
         imageError = false;
         imageLoaded = true;
-        imageLoadingState = "loaded"; 
+        imageLoadingState = "loaded";
 
         // Wait for next frame to ensure container is mounted
         requestAnimationFrame(() => {
@@ -339,14 +350,14 @@
 
     async function handleLikeClick() {
         if (likeLoading) return;
-        
+
         likeLoading = true;
         try {
             await handleLike(article);
             isLiked = $likedArticles.has(article.id);
-            handleArticleInteraction('like');
+            handleArticleInteraction("like");
         } catch (error) {
-            console.error('Error handling like:', error);
+            console.error("Error handling like:", error);
         } finally {
             likeLoading = false;
         }
@@ -355,7 +366,8 @@
     function handleScroll(event: Event) {
         if (!active) return;
         const element = event.target as HTMLElement;
-        const scrollDepth = (element.scrollTop + element.clientHeight) / element.scrollHeight;
+        const scrollDepth =
+            (element.scrollTop + element.clientHeight) / element.scrollHeight;
         maxScrollDepth = Math.max(maxScrollDepth, scrollDepth);
     }
 
@@ -363,7 +375,8 @@
         const timeSpent = Date.now() - readStartTime;
         const estimatedWordsPerMinute = 200;
         const wordCount = article.content?.split(/\s+/).length || 0;
-        const estimatedReadTime = (wordCount / estimatedWordsPerMinute) * 60 * 1000;
+        const estimatedReadTime =
+            (wordCount / estimatedWordsPerMinute) * 60 * 1000;
         return Math.min(100, (timeSpent / estimatedReadTime) * 100);
     }
 
@@ -373,7 +386,7 @@
             timeSpent,
             scrollDepth: maxScrollDepth,
             viewportTime: active ? Date.now() - viewportStartTime : 0,
-            readPercentage: calculateReadPercentage()
+            readPercentage: calculateReadPercentage(),
         });
     }
 
@@ -381,12 +394,14 @@
 
     function handleShareClick() {
         if (navigator.share) {
-            navigator.share({
-                title: article.title,
-                url: article.url
-            }).then(() => {
-                handleArticleInteraction('share');
-            });
+            navigator
+                .share({
+                    title: article.title,
+                    url: article.url,
+                })
+                .then(() => {
+                    handleArticleInteraction("share");
+                });
         } else {
             showShareModal = true;
         }
@@ -409,7 +424,7 @@
     // Update the view recording
     $: if (isVisible && !hasRecordedView) {
         hasRecordedView = true;
-        handleArticleInteraction('view');
+        handleArticleInteraction("view");
     }
 </script>
 
@@ -420,10 +435,19 @@
     on:touchend={handleTap}
     on:scroll={handleScroll}
 >
-
-    {#if !contentLoaded}
-        <div class="absolute inset-0 bg-black/80 flex items-center justify-center">
+    {#if !contentLoaded || showFallbackLoading}
+        <div
+            class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4"
+        >
             <LoadingSpinner size="md" show={true} fullscreen={false} />
+            {#if showFallbackLoading}
+                <div class="text-white/70 text-sm text-center px-4">
+                    <p>Still loading...</p>
+                    <p class="text-xs mt-1">
+                        Pull down to refresh if content doesn't appear
+                    </p>
+                </div>
+            {/if}
         </div>
     {/if}
 
@@ -439,11 +463,11 @@
                         class="absolute inset-0 bg-neutral-800 animate-pulse flex items-center justify-center"
                         transition:fade={{ duration: 200 }}
                     >
-                        <LoadingSpinner 
-                            size="sm" 
-                            show={true} 
+                        <LoadingSpinner
+                            size="sm"
+                            show={true}
                             fullscreen={false}
-                            message="Loading image" 
+                            message="Loading image"
                         />
                     </div>
                 {/if}
@@ -638,23 +662,11 @@
                 class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
             >
                 {#if likeLoading}
-                    <div class="w-6 h-6 @md:w-8 @md:h-8 animate-spin border-2 border-current border-t-transparent rounded-full"></div>
+                    <div
+                        class="w-6 h-6 @md:w-8 @md:h-8 animate-spin border-2 border-current border-t-transparent rounded-full"
+                    ></div>
                 {:else}
-                    <svg
-                        class="w-6 h-6 @md:w-8 @md:h-8"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
-                             2 5.42 4.42 3 7.5 3
-                             c1.74 0 3.41.81 4.5 2.09
-                             C13.09 3.81 14.76 3
-                             16.5 3 19.58 3 22 5.42
-                             22 8.5c0 3.78-3.4 6.86-8.55 11.54
-                             L12 21.35z"
-                        />
-                    </svg>
+                    <Heart class="w-6 h-6 @md:w-8 @md:h-8" fill={isLiked ? "currentColor" : "none"} />
                 {/if}
             </div>
             <span class="text-xs @md:text-sm mt-1 font-medium text-white/90">
@@ -673,31 +685,11 @@
                 class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
                 class:opacity-50={isOffline}
             >
-                <svg
-                    class="w-6 h-6 @md:w-8 @md:h-8 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    {#if isOffline}
-                        <!-- Offline icon -->
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238"
-                        />
-                    {:else}
-                        <!-- Original read icon -->
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10
-                               a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                    {/if}
-                </svg>
+                {#if isOffline}
+                    <WifiOff class="w-6 h-6 @md:w-8 @md:h-8 text-white" />
+                {:else}
+                    <ExternalLink class="w-6 h-6 @md:w-8 @md:h-8 text-white" />
+                {/if}
             </div>
             <span class="text-xs @md:text-sm mt-1 font-medium text-white/90">
                 {isOffline ? "Offline" : "Read"}
@@ -709,11 +701,10 @@
             on:click={handleShareClick}
             aria-label="Share"
         >
-            <div class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-all">
-                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-                </svg>
+            <div
+                class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-all"
+            >
+                <Share2 class="w-6 h-6 text-white" />
             </div>
             <span class="text-xs mt-1 font-medium text-white/90">Share</span>
         </button>
@@ -728,38 +719,14 @@
                 on:click={() => onNavigate("up")}
                 aria-label="Navigate up"
             >
-                <svg
-                    class="w-6 h-6 text-white group-hover:scale-110 transition-transform"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M5 15l7-7 7 7"
-                    />
-                </svg>
+                <ArrowUp class="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
             </button>
             <button
                 class="p-3 rounded-full bg-black/40 hover:bg-black/60 transition-colors group"
                 on:click={() => onNavigate("down")}
                 aria-label="Navigate down"
             >
-                <svg
-                    class="w-6 h-6 text-white group-hover:scale-110 transition-transform"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 9l-7 7-7-7"
-                    />
-                </svg>
+                <ArrowDown class="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
             </button>
         </div>
     {/if}
@@ -776,21 +743,23 @@
     {/if}
 
     {#if recommendationsLoading}
-        <div class="absolute bottom-4 right-4 z-50 bg-black/40 backdrop-blur rounded-full">
-            <LoadingSpinner 
-                size="sm" 
-                show={true} 
-                fullscreen={false} 
+        <div
+            class="absolute bottom-4 right-4 z-50 bg-black/40 backdrop-blur rounded-full"
+        >
+            <LoadingSpinner
+                size="sm"
+                show={true}
+                fullscreen={false}
                 position="center"
             />
         </div>
     {/if}
 </div>
 
-<ShareArticle 
+<ShareArticle
     {article}
     isOpen={showShareModal}
-    onClose={() => showShareModal = false}
+    onClose={() => (showShareModal = false)}
 />
 
 <style>

@@ -9,6 +9,7 @@
     import { getLikedArticlesData } from '../storage/utils';
     import ArticleCard from './ArticleCard.svelte';
     import type { WikiArticle } from '../types';
+    import { LayoutGrid, List, Play, X } from 'lucide-svelte';  // Add Lucide imports
     
     interface TimestampedArticle extends WikiArticle {
         timestamp?: number;
@@ -187,20 +188,38 @@
         <nav class="flex justify-between items-center p-4">
             <!-- View toggles (grid, list, story) -->
             <div class="flex gap-2">
-                {#each ['grid', 'list', 'story'] as mode}
-                    <button
-                        class="p-2 rounded-full transition-colors"
-                        class:bg-white-20={viewMode === mode}
-                        class:bg-white-5={viewMode !== mode}
-                        class:hover:bg-white-30={viewMode !== mode}
-                        on:click={() => switchView(mode as typeof viewMode)}
-                        aria-label={`Switch to ${mode} view`}
-                    >
-                        <svg class="w-5 h-5 text-white">
-                            <use href="#icon-{mode}" />
-                        </svg>
-                    </button>
-                {/each}
+                <button
+                    class="p-2 rounded-full transition-colors"
+                    class:bg-white-20={viewMode === 'grid'}
+                    class:bg-white-5={viewMode !== 'grid'}
+                    class:hover:bg-white-30={viewMode !== 'grid'}
+                    on:click={() => switchView('grid')}
+                    aria-label="Switch to grid view"
+                >
+                    <LayoutGrid class="w-5 h-5 text-white" />
+                </button>
+
+                <button
+                    class="p-2 rounded-full transition-colors"
+                    class:bg-white-20={viewMode === 'list'}
+                    class:bg-white-5={viewMode !== 'list'}
+                    class:hover:bg-white-30={viewMode !== 'list'}
+                    on:click={() => switchView('list')}
+                    aria-label="Switch to list view"
+                >
+                    <List class="w-5 h-5 text-white" />
+                </button>
+
+                <button
+                    class="p-2 rounded-full transition-colors"
+                    class:bg-white-20={viewMode === 'story'}
+                    class:bg-white-5={viewMode !== 'story'}
+                    class:hover:bg-white-30={viewMode !== 'story'}
+                    on:click={() => switchView('story')}
+                    aria-label="Switch to story view"
+                >
+                    <Play class="w-5 h-5 text-white" />
+                </button>
             </div>
 
             <!-- Right side: story indicator & close -->
@@ -215,13 +234,7 @@
                     on:click={onClose}
                     aria-label="Close"
                 >
-                    <svg class="w-6 h-6 text-white" viewBox="0 0 24 24">
-                        <path
-                            stroke="currentColor"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                        />
-                    </svg>
+                    <X class="w-6 h-6 text-white" />
                 </button>
             </div>
         </nav>
@@ -348,33 +361,6 @@
             {/if}
         {/if}
     </main>
-
-    <!-- Hidden SVG for icons -->
-    <div class="hidden">
-        <svg xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <symbol id="icon-grid" viewBox="0 0 24 24">
-                    <path
-                        fill="currentColor"
-                        d="M3 3h7v7H3V3m11 0h7v7h-7V3m0 11h7v7h-7v-7M3 14h7v7H3v-7z"
-                    />
-                </symbol>
-                <symbol id="icon-list" viewBox="0 0 24 24">
-                    <path
-                        fill="currentColor"
-                        d="M3 4h18v2H3V4m0 7h18v2H3v-2m0 7h18v2H3v-2z"
-                    />
-                </symbol>
-                <symbol id="icon-story" viewBox="0 0 24 24">
-                    <path
-                        fill="currentColor"
-                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48
-                           10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"
-                    />
-                </symbol>
-            </defs>
-        </svg>
-    </div>
 </div>
 
 <style>

@@ -5,6 +5,7 @@
     import { fetchLinkedPages } from "$lib/api/wikipedia";
     import { language } from "$lib/store/language";
     import { onMount } from 'svelte';
+    import { X, Image } from 'lucide-svelte';  // Add Lucide imports
 
     export let isOpen = false;
     export let currentArticle: WikiArticle;
@@ -124,9 +125,7 @@
                         on:click={onClose}
                         aria-label="Close modal"
                     >
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        <X class="w-6 h-6 text-white" />
                     </button>
                 </div>
             </div>
@@ -160,9 +159,7 @@
                                     </div>
                                 {:else}
                                     <div class="flex-shrink-0 w-20 h-20 rounded-lg bg-white/5 flex items-center justify-center">
-                                        <svg class="w-8 h-8 text-white/20" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm5 4a1 1 0 110-2 1 1 0 010 2zm4 4l-2-2-4 4h10l-4-6z" />
-                                        </svg>
+                                        <Image class="w-8 h-8 text-white/20" />
                                     </div>
                                 {/if}
                                 <div class="flex-1 min-w-0">

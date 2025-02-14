@@ -4,6 +4,7 @@
     import LanguageSelector from '$lib/components/LanguageSelector.svelte';
     import LikedArticles from '$lib/components/LikedArticles.svelte';
     import { setLoading } from '$lib/store/loading';
+    import { Hash, Heart } from 'lucide-svelte';  // Add Lucide imports
     
     export let language: keyof typeof LANGUAGE_FLAGS;
     export let likedCount: number;
@@ -48,19 +49,7 @@
             aria-label="Show Related Articles"
         >
             <div class="flex items-center gap-2">
-                <svg
-                    class="w-6 h-6 text-blue-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"
-                    />
-                </svg>
+                <Hash class="w-6 h-6 text-blue-400" />
             </div>
         </button>
 
@@ -70,15 +59,7 @@
             aria-label="Show Liked Articles"
         >
             <div class="flex items-center gap-2">
-                <svg
-                    class="w-6 h-6 text-red-500"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                    />
-                </svg>
+                <Heart class="w-6 h-6 text-red-500" fill="currentColor" />
                 <span class="text-white font-medium">{likedCount}</span>
             </div>
         </button>
