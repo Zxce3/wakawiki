@@ -680,6 +680,8 @@
             class:pointer-events-none={isOffline}
             aria-label={isOffline ? "Not available offline" : "Read article"}
             title={isOffline ? "Not available offline" : "Read article"}
+            target="_blank"
+            rel="noopener noreferrer"
         >
             <div
                 class="p-3 @md:p-4 rounded-full bg-black/40 hover:bg-black/60 transition-all active:scale-95 group-hover:scale-105"
