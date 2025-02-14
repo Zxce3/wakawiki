@@ -30,6 +30,7 @@
     "@types/node": "^22.13.1",
     "@types/serviceworker": "^0.0.120",
     "@vite-pwa/assets-generator": "^0.2.6",
+    "lucide-svelte": "^0.475.0",
     "url": "^0.11.4",
     "wikipedia": "^2.1.2",
     "workbox-core": "^7.3.0",
