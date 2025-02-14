@@ -208,19 +208,30 @@
     <title>{title}</title>
     <meta name="description" content={description}>
     <link rel="canonical" href={canonicalUrl}>
+    <meta name="language" content={article?.language || 'en'}>
 
-    <!-- Open Graph -->
-    <meta property="og:title" content={title}>
-    <meta property="og:description" content={description}>
-    <meta property="og:image" content={imageUrl}>
-    <meta property="og:url" content={canonicalUrl}>
-    <meta property="og:type" content="article">
-    <meta property="og:site_name" content={siteName}>
+    <!-- Article Timing -->
+    {#if article?.lastModified}
+        <meta property="article:modified_time" content={article.lastModified}>
+    {/if}
+    {#if article?.datePublished}
+        <meta property="article:published_time" content={article.datePublished}>
+    {/if}
 
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content={title}>
-    <meta name="twitter:description" content={description}>
-    <meta name="twitter:image" content={imageUrl}>
+    <!-- Enhanced Social Media Tags -->
+    <meta property="og:locale" content={article?.language || 'en'}>
+    {#if article?.imageUrl}
+        <meta property="og:image:width" content={article.imageWidth || '1200'}>
+        <meta property="og:image:height" content={article.imageHeight || '630'}>
+        <meta property="og:image:alt" content={article.imageCaption || article.title}>
+    {/if}
+
+    <!-- Additional Twitter Tags -->
+    <meta name="twitter:site" content="@wakawiki">
+    <meta name="twitter:creator" content="@wakawiki">
+    {#if article?.imageUrl}
+        <meta name="twitter:image:alt" content={article.imageCaption || article.title}>
+    {/if}
 
     {#if browser}
         {@html `<script type="application/ld+json">${jsonLdString}</script>`}
@@ -253,4 +264,21 @@
     {/if}
 
     <meta name="keywords" content={getKeywords(article)}>
+
+    <!-- Add robots meta if needed -->
+    {#if article?.noIndex}
+        <meta name="robots" content="noindex,nofollow">
+    {:else}
+        <meta name="robots" content="index,follow">
+    {/if}
+
+    <!-- Mobile App Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content={siteName}>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="msapplication-navbutton-color" content="#000000">
+
 </svelte:head>
