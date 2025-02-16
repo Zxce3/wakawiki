@@ -17,6 +17,7 @@
     import { storeOfflineArticle } from "$lib/storage/utils";
     import ShareArticle from "./ShareArticle.svelte";
     import { Heart, Share2, ExternalLink, ArrowUp, ArrowDown, Wifi, WifiOff } from 'lucide-svelte';
+    import { browser } from "$app/environment";
     export let article: WikiArticle;
     export let active = false;
     export let score: number | undefined = undefined;
@@ -98,6 +99,10 @@
     let loadingTimeout: NodeJS.Timeout;
     const FALLBACK_TIMEOUT = 2000; // Show fallback after 2 seconds
 
+    // Add virtualization optimization
+    let intersectionObserver: IntersectionObserver;
+    let isIntersecting = false;
+
     onMount(() => {
         mounted = true;
         if (active) {
@@ -116,10 +121,39 @@
         if (article) {
             storeOfflineArticle(article).catch(console.error);
         }
+
+        // Only observe intersection if browser supports it
+        if (browser && 'IntersectionObserver' in window) {
+            intersectionObserver = new IntersectionObserver(
+                (entries) => {
+                    const [entry] = entries;
+                    isIntersecting = entry.isIntersecting;
+                    
+                    if (isIntersecting && !contentLoaded) {
+                        loadContent();
+                        if (active) {
+                            handleArticleView(article);
+                        }
+                    }
+                },
+                {
+                    rootMargin: '100% 0px',
+                    threshold: 0
+                }
+            );
+
+            if (containerElement) {
+                intersectionObserver.observe(containerElement);
+            }
+        }
+
         return () => {
             clearTimeout(loadTimeout);
             clearTimeout(loadingTimeout);
             mounted = false;
+            if (intersectionObserver) {
+                intersectionObserver.disconnect();
+            }
         };
     });
 
@@ -267,6 +301,19 @@
 
     $: if (isVisible && !imageLoaded && !imageError) {
         attemptImageLoad();
+    }
+
+    // Optimize image loading
+    $: if (isIntersecting && !imageLoaded && !imageError && shouldLoadImage) {
+        loadImage();
+    }
+
+    // Cleanup resources when article is not visible
+    $: if (!isIntersecting && imageElement) {
+        // Release image resources when out of view
+        imageElement.src = '';
+        imageLoaded = false;
+        imageLoading = true;
     }
 
     function updateImageLayout() {
@@ -426,12 +473,18 @@
         hasRecordedView = true;
         handleArticleInteraction("view");
     }
+
+
+    function handleArticleView(article: WikiArticle) {
+        throw new Error("Function not implemented.");
+    }
 </script>
 
 <div
     bind:this={containerElement}
     class="article-card h-full w-full flex items-center justify-center relative overflow-hidden"
     class:active
+    class:visible={isIntersecting}
     on:touchend={handleTap}
     on:scroll={handleScroll}
 >
@@ -790,5 +843,14 @@
         backface-visibility: hidden;
         transform: translateZ(0);
         will-change: opacity, transform;
+    }
+
+    .article-card {
+        will-change: transform;
+        contain: content;
+    }
+
+    .article-card:not(.visible) {
+        visibility: hidden;
     }
 </style>
